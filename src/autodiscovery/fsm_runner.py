@@ -146,10 +146,13 @@ async def run_live_fsm(
                 f"Branch history:\n{branch_context}\n\n"
                 "Propose a new hypothesis and a SIMPLE experiment plan.\n"
                 "CRITICAL CONSTRAINTS:\n"
-                "- The experiment must use ONLY synthetic/simulated data (no downloads, no APIs, no internet)\n"
-                "- Keep the experiment under 50 lines of Python\n"
-                "- Use only: numpy, scipy, pandas, sklearn, matplotlib\n"
-                "- Print numerical results to stdout\n\n"
+                "- The experiment MUST be 10-30 lines of Python. NOT more.\n"
+                "- Use ONLY basic stats: t-test, correlation, regression, chi-square, or simple Monte Carlo.\n"
+                "- Use ONLY synthetic/simulated data (no downloads, no APIs, no internet, no files)\n"
+                "- Use only: numpy, scipy.stats, pandas, sklearn\n"
+                "- Produce ONE clear numerical result (p-value, correlation, effect size)\n"
+                "- The experiment_plan MUST be 2-3 sentences max. Do NOT describe multi-step procedures.\n"
+                "- Think 'one scipy.stats function call on generated data' — not a simulation framework.\n\n"
                 "Respond with JSON: {{\"hypothesis\": \"...\", \"context\": \"...\", "
                 "\"variables\": [...], \"relationships\": [...], "
                 "\"experiment_plan\": \"...\"}}"
@@ -269,16 +272,25 @@ async def run_live_fsm(
 
         # ── Experiment Reviewer (Codex) ──
         elif state == "experiment_reviewer":
+            sys_prompt_reviewer = str(_prompts_dir() / "experiment_reviewer.md")
             prompt = (
-                f"Review this experiment:\n\n"
+                f"Review this experiment for BASIC VALIDITY only.\n\n"
                 f"Experiment plan: {experiment_plan}\n\n"
                 f"Code output: {experiment_output[:2000]}\n\n"
                 f"Analysis: {analysis_summary}\n\n"
-                "Was the experiment faithfully implemented? Are results interpretable?\n"
+                "APPROVE if the output contains numerical results that can be interpreted.\n"
+                "REJECT ONLY if the code crashed or produced no scientific results.\n"
+                "Bias toward approval. Do NOT reject for missing optional analyses or interpretation.\n\n"
                 "Return JSON: {{\"error\": false, \"assessment\": \"...\"}} or "
                 "{{\"error\": true, \"feedback\": \"...\"}}"
             )
-            result = await codex_as_claude.invoke(prompt=prompt, output_format="text", cwd=str(exp_dir), timeout=120)
+            result = await codex_as_claude.invoke(
+                prompt=prompt,
+                system_prompt_file=sys_prompt_reviewer,
+                output_format="text",
+                cwd=str(exp_dir),
+                timeout=120,
+            )
             logger.info(f"  Reviewer exit={result.exit_code}, len={len(result.raw)}")
             data = _extract_json(result)
 
