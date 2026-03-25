@@ -31,8 +31,6 @@ uv run autodiscovery export --top 5 --format md
 
 ## Example
 
-You're studying whether neural scaling laws transfer across modalities. You want the system to autonomously generate and test hypotheses:
-
 ```bash
 uv run autodiscovery init \
   --domain "neural scaling laws across modalities" \
