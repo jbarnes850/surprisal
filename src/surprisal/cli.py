@@ -112,10 +112,21 @@ def explore(budget, concurrency, exp_id, c_explore, dry_run):
         db.close()
         return
 
+    # Preflight: detect available agent providers
+    from surprisal.providers import detect_providers
+    providers = asyncio.run(detect_providers())
+    if not providers.any_available:
+        click.echo("Error: No agent providers found. Run 'claude auth login' or install Codex CLI.", err=True)
+        sys.exit(1)
+    if not providers.both_available:
+        available = "Claude" if providers.claude_available else "Codex"
+        click.echo(f"Note: Only {available} detected -- running in single-provider mode.")
+
     result = asyncio.run(run_exploration(
         db=db, exploration_dir=exp_dir, budget=budget,
         concurrency=concurrency, c_explore=c_explore,
         config=cfg, root_id=root[0], domain=exp.domain,
+        providers=providers,
     ))
     db.close()
     click.echo(json.dumps(result, indent=2))

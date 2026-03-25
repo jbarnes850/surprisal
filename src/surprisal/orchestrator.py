@@ -6,6 +6,7 @@ from surprisal.config import AutoDiscoveryConfig
 from surprisal.db import Database
 from surprisal.mcts import select_node, backpropagate, max_children
 from surprisal.models import Node
+from surprisal.providers import ProviderStatus, detect_providers
 from surprisal.workspace import create_workspace, assign_branch_id, write_branch_context, write_claude_md
 
 logger = logging.getLogger("surprisal")
@@ -38,8 +39,15 @@ async def run_exploration(
     config: AutoDiscoveryConfig,
     root_id: str,
     domain: str,
+    providers: ProviderStatus | None = None,
 ) -> dict:
     """Main exploration loop -- spawns worker pool, handles shutdown."""
+    # Detect available providers if not passed in
+    if providers is None:
+        providers = await detect_providers()
+    if not providers.any_available:
+        return {"status": "error", "message": "No agent providers available"}
+
     # Count completed nodes for any exploration
     all_nodes = db.execute("SELECT COUNT(*) FROM nodes WHERE status IN ('verified', 'failed')").fetchone()[0]
     remaining = budget - all_nodes
@@ -63,7 +71,8 @@ async def run_exploration(
     workers = [
         asyncio.create_task(
             worker_loop(db, exploration_dir, selection_lock, counter,
-                        shutdown, c_explore, config, root_id, domain)
+                        shutdown, c_explore, config, root_id, domain,
+                        providers)
         )
         for _ in range(concurrency)
     ]
@@ -91,6 +100,7 @@ async def worker_loop(
     config: AutoDiscoveryConfig,
     root_id: str,
     domain: str,
+    providers: ProviderStatus | None = None,
 ) -> None:
     """Per-worker loop: select -> expand -> execute -> backpropagate."""
     import uuid
@@ -148,6 +158,7 @@ async def worker_loop(
                 workspace=ws,
                 domain=domain,
                 branch_path=branch_path,
+                providers=providers,
             )
         except Exception as e:
             logger.error(f"FSM error for node {child_id}: {e}")

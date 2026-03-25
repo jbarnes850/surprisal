@@ -16,6 +16,7 @@ from surprisal.db import Database
 from surprisal.fsm import select_next_state, FSMResponse
 from surprisal.models import Node, BeliefSample
 from surprisal.bayesian import compute_surprisal
+from surprisal.providers import ProviderStatus
 from surprisal.workspace import get_experiment_dir
 
 logger = logging.getLogger("surprisal")
@@ -90,18 +91,39 @@ async def run_live_fsm(
     workspace: Path,
     domain: str,
     branch_path: list[Node],
+    providers: ProviderStatus | None = None,
 ) -> bool:
     """Run the full FSM for a single node with real agent calls.
 
     Returns True if the node was successfully verified (reached COMPLETE),
     False if it failed (reached FAIL).
     """
-    claude = ClaudeAgent(model=config.agents.claude_model, max_turns=config.agents.max_turns)
-    # Use Claude for all roles initially — Codex subprocess invocation needs
-    # further debugging for non-interactive mode. The heterogeneous agent
-    # mapping (Claude=research, Codex=code) is preserved in the FSM state names
-    # and can be swapped when Codex subprocess is verified.
-    codex_as_claude = ClaudeAgent(model="sonnet", max_turns=config.agents.max_turns)
+    # If no provider status passed, default to Claude-only
+    if providers is None:
+        providers = ProviderStatus(claude_available=True, codex_available=False)
+
+    # Create agents based on available providers
+    if providers.claude_available:
+        research_agent = ClaudeAgent(model=config.agents.claude_model, max_turns=config.agents.max_turns)
+    else:
+        research_agent = None
+
+    if providers.codex_available and providers.claude_available:
+        # Heterogeneous: Codex for code/analysis roles
+        code_agent = ClaudeAgent(model="sonnet", max_turns=config.agents.max_turns)
+        # TODO: swap to real CodexAgent when codex exec subprocess is stable
+    elif providers.claude_available:
+        # Claude-only: use Claude for everything
+        code_agent = ClaudeAgent(model="sonnet", max_turns=config.agents.max_turns)
+    elif providers.codex_available:
+        # Codex-only: not yet supported -- Codex subprocess needs work
+        logger.error("Codex-only mode not yet supported")
+        db.update_node(node_id, status="failed", virtual_loss=0)
+        return False
+    else:
+        logger.error("No agent providers available")
+        db.update_node(node_id, status="failed", virtual_loss=0)
+        return False
     sandbox = DockerSandbox(
         memory=config.sandbox.memory_limit,
         cpus=config.sandbox.cpu_limit,
@@ -158,7 +180,7 @@ async def run_live_fsm(
                 "\"experiment_plan\": \"...\"}}"
             )
             sys_prompt = str(_prompts_dir() / "experiment_generator.md")
-            result = await claude.invoke(
+            result = await research_agent.invoke(
                 prompt=prompt,
                 system_prompt_file=sys_prompt,
                 output_format="text",
@@ -255,7 +277,7 @@ async def run_live_fsm(
                 "If error, return JSON: {{\"error\": true, \"feedback\": \"...\"}}\n"
                 "If success, return JSON: {{\"error\": false, \"summary\": \"...\", \"key_results\": {{}}}}"
             )
-            result = await codex_as_claude.invoke(prompt=prompt, output_format="text", cwd=str(exp_dir), timeout=120)
+            result = await code_agent.invoke(prompt=prompt, output_format="text", cwd=str(exp_dir), timeout=120)
             logger.info(f"  Analyst exit={result.exit_code}, len={len(result.raw)}")
             data = _extract_json(result)
 
@@ -284,7 +306,7 @@ async def run_live_fsm(
                 "Return JSON: {{\"error\": false, \"assessment\": \"...\"}} or "
                 "{{\"error\": true, \"feedback\": \"...\"}}"
             )
-            result = await codex_as_claude.invoke(
+            result = await code_agent.invoke(
                 prompt=prompt,
                 system_prompt_file=sys_prompt_reviewer,
                 output_format="text",
@@ -316,7 +338,7 @@ async def run_live_fsm(
                 f"Original plan: {experiment_plan}\n\n"
                 "Revise the experiment plan. Respond in natural language, no code."
             )
-            result = await codex_as_claude.invoke(prompt=prompt, output_format="text", cwd=str(exp_dir), timeout=120)
+            result = await code_agent.invoke(prompt=prompt, output_format="text", cwd=str(exp_dir), timeout=120)
             experiment_plan = result.raw.strip()
             (exp_dir / "plan.md").write_text(f"REVISED:\n{experiment_plan}")
             last_response = FSMResponse(error=False)
@@ -332,7 +354,7 @@ async def run_live_fsm(
                 "\"variables\": [...], \"relationships\": [...]}}"
             )
             sys_prompt = str(_prompts_dir() / "hypothesis_generator.md")
-            result = await claude.invoke(
+            result = await research_agent.invoke(
                 prompt=prompt,
                 system_prompt_file=sys_prompt,
                 output_format="text",
@@ -363,7 +385,7 @@ async def run_live_fsm(
             )
             k_prior = 0
             for i in range(n_samples):
-                result = await claude.invoke(
+                result = await research_agent.invoke(
                     prompt=prior_prompt,
                     output_format="text",
                     cwd=str(workspace),
@@ -391,7 +413,7 @@ async def run_live_fsm(
             )
             k_post = 0
             for i in range(n_samples):
-                result = await claude.invoke(
+                result = await research_agent.invoke(
                     prompt=posterior_prompt,
                     output_format="text",
                     cwd=str(workspace),
