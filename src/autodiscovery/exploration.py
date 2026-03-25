@@ -1,7 +1,7 @@
 import json
 import uuid
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -16,7 +16,7 @@ class ExplorationMeta:
 
     def __post_init__(self):
         if not self.created_at:
-            self.created_at = datetime.utcnow().isoformat()
+            self.created_at = datetime.now(timezone.utc).isoformat()
 
 
 def create_exploration(base_dir: Path, domain: str, budget: int = 100) -> ExplorationMeta:

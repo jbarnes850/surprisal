@@ -182,9 +182,12 @@ def _print_tree(db, parent_id, indent):
 @click.option("--format", "fmt", type=click.Choice(["json", "csv", "md"]), default="md")
 @click.option("--top", default=None, type=int, help="Top N hypotheses")
 @click.option("--min-surprisal", default=None, type=float)
+@click.option("--training-data", is_flag=True, help="Export as JSONL for surprisal predictor")
 @click.option("--exploration", "exp_id", default=None)
-def export(fmt, top, min_surprisal, exp_id):
+def export(fmt, top, min_surprisal, training_data, exp_id):
     """Export ranked hypotheses."""
+    from autodiscovery.export import export_json, export_csv, export_markdown, export_training_data
+
     home = get_home()
     if exp_id:
         exp_dir = home / exp_id
@@ -198,23 +201,15 @@ def export(fmt, top, min_surprisal, exp_id):
     db = Database(exp_dir / "tree.db")
     db.initialize()
 
-    query = "SELECT * FROM nodes WHERE status='verified' AND bayesian_surprise IS NOT NULL"
-    params = []
-    if min_surprisal is not None:
-        query += " AND bayesian_surprise > ?"
-        params.append(min_surprisal)
-    query += " ORDER BY bayesian_surprise DESC"
-    if top:
-        query += " LIMIT ?"
-        params.append(top)
+    if training_data:
+        click.echo(export_training_data(db))
+    elif fmt == "json":
+        click.echo(json.dumps(export_json(db, top=top, min_surprisal=min_surprisal), indent=2))
+    elif fmt == "csv":
+        click.echo(export_csv(db, top=top, min_surprisal=min_surprisal))
+    elif fmt == "md":
+        click.echo(export_markdown(db, top=top, min_surprisal=min_surprisal))
 
-    rows = db.execute(query, tuple(params)).fetchall()
-    # Output as JSON for now (full export module comes in Task 13)
-    results = []
-    for row in rows:
-        results.append({"hypothesis": row[2], "bayesian_surprise": row[12], "depth": row[8]})
-
-    click.echo(json.dumps({"hypotheses": results}, indent=2))
     db.close()
 
 
