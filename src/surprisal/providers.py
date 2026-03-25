@@ -54,12 +54,12 @@ async def detect_providers() -> ProviderStatus:
     status = ProviderStatus(claude_available=claude, codex_available=codex)
 
     if status.both_available:
-        logger.info("Both Claude and Codex available -- using heterogeneous agent mapping")
+        logger.info("Both Claude and Codex detected (Codex integration pending -- routing through Claude)")
     elif status.claude_available:
-        logger.info("Only Claude available -- routing all roles through Claude")
+        logger.info("Claude available -- routing all roles through Claude")
     elif status.codex_available:
-        logger.info("Only Codex available -- routing all roles through Codex")
+        logger.warning("Only Codex detected -- Codex-only mode not yet supported, Claude required")
     else:
-        logger.error("No agent providers available -- run 'claude auth login' or install Codex")
+        logger.error("No agent providers available -- run 'claude auth login'")
 
     return status

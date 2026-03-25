@@ -126,13 +126,12 @@ generator -> programmer -> Docker executor -> analyst -> reviewer
 ## Requirements
 
 - Python 3.12+
-- **At least one** of:
-  - [Claude CLI](https://claude.ai/install.sh) authenticated (`claude auth login`)
-  - [Codex CLI](https://github.com/openai/codex) authenticated
+- [Claude CLI](https://claude.ai/install.sh) authenticated (`claude auth login`) -- **required**
+- [Codex CLI](https://github.com/openai/codex) -- optional (heterogeneous agent support planned)
 - Docker (for sandbox execution)
 - [`uv`](https://docs.astral.sh/uv/) package manager
 
-> Both Claude and Codex are recommended for best results (cross-model feedback prevents echo chambers). If only one is available, all roles are routed through it automatically.
+> Claude is the primary agent provider. Codex integration for cross-model feedback is under development.
 
 ## Configuration
 
