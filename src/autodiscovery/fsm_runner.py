@@ -178,13 +178,13 @@ async def run_live_fsm(
             if last_response and last_response.feedback:
                 feedback = f"\n\nPrevious attempt feedback: {last_response.feedback}"
 
+            # Truncate plan to avoid CLI argument length issues
+            plan_summary = experiment_plan[:800]
             prompt = (
-                f"Write a COMPLETE Python script for this experiment. "
-                f"Output ONLY the Python code, no explanation.\n\n"
-                f"Experiment plan:\n{experiment_plan}\n{feedback}\n\n"
-                "Available libraries: numpy, scipy, pandas, scikit-learn, matplotlib, "
-                "statsmodels, seaborn, networkx, sympy. No network access. "
-                "Print all results to stdout. Keep it simple and self-contained."
+                f"Write a self-contained Python script. Output ONLY code.\n"
+                f"Task: {plan_summary}\n{feedback}\n"
+                "Libraries: numpy scipy pandas sklearn matplotlib statsmodels. "
+                "No network. Print results to stdout."
             )
             # Programmer outputs code as text — no tools needed
             # The FSM saves the code to experiment.py
