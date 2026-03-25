@@ -7,18 +7,18 @@ import json
 import logging
 from pathlib import Path
 
-from autodiscovery.agents.base import AgentResult
-from autodiscovery.agents.claude import ClaudeAgent
-from autodiscovery.agents.codex import CodexAgent
-from autodiscovery.agents.docker import DockerSandbox
-from autodiscovery.config import AutoDiscoveryConfig
-from autodiscovery.db import Database
-from autodiscovery.fsm import select_next_state, FSMResponse
-from autodiscovery.models import Node, BeliefSample
-from autodiscovery.surprisal import compute_surprisal
-from autodiscovery.workspace import get_experiment_dir
+from surprisal.agents.base import AgentResult
+from surprisal.agents.claude import ClaudeAgent
+from surprisal.agents.codex import CodexAgent
+from surprisal.agents.docker import DockerSandbox
+from surprisal.config import AutoDiscoveryConfig
+from surprisal.db import Database
+from surprisal.fsm import select_next_state, FSMResponse
+from surprisal.models import Node, BeliefSample
+from surprisal.bayesian import compute_surprisal
+from surprisal.workspace import get_experiment_dir
 
-logger = logging.getLogger("autodiscovery")
+logger = logging.getLogger("surprisal")
 
 
 def _prompts_dir() -> Path:

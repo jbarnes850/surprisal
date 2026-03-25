@@ -5,17 +5,17 @@ import uuid
 import asyncio
 import click
 from pathlib import Path
-from autodiscovery.config import AutoDiscoveryConfig, load_config, save_config
-from autodiscovery.db import Database
-from autodiscovery.models import Node
-from autodiscovery.exploration import (
+from surprisal.config import AutoDiscoveryConfig, load_config, save_config
+from surprisal.db import Database
+from surprisal.models import Node
+from surprisal.exploration import (
     create_exploration, load_exploration, find_latest_exploration,
 )
-from autodiscovery.orchestrator import run_exploration
+from surprisal.orchestrator import run_exploration
 
 
 def get_home() -> Path:
-    return Path(os.environ.get("AUTODISCOVERY_HOME", os.path.expanduser("~/.autodiscovery")))
+    return Path(os.environ.get("SURPRISAL_HOME", os.path.expanduser("~/.surprisal")))
 
 
 def get_config() -> AutoDiscoveryConfig:
@@ -24,7 +24,7 @@ def get_config() -> AutoDiscoveryConfig:
 
 @click.group()
 def main():
-    """autodiscovery -- open-ended scientific discovery via Bayesian surprise."""
+    """surprisal -- open-ended scientific discovery via Bayesian surprise."""
     pass
 
 
@@ -86,7 +86,7 @@ def explore(budget, concurrency, exp_id, c_explore, dry_run):
         exp_dir = find_latest_exploration(home)
 
     if not exp_dir or not exp_dir.exists():
-        click.echo("Error: No exploration found. Run 'autodiscovery init --domain <topic>' first.", err=True)
+        click.echo("Error: No exploration found. Run 'surprisal init --domain <topic>' first.", err=True)
         sys.exit(1)
 
     exp = load_exploration(exp_dir)
@@ -99,11 +99,11 @@ def explore(budget, concurrency, exp_id, c_explore, dry_run):
 
     root = db.execute("SELECT id FROM nodes WHERE parent_id IS NULL LIMIT 1").fetchone()
     if not root:
-        click.echo("Error: No root node. Run 'autodiscovery init' first.", err=True)
+        click.echo("Error: No root node. Run 'surprisal init' first.", err=True)
         sys.exit(1)
 
     if dry_run:
-        from autodiscovery.mcts import select_node
+        from surprisal.mcts import select_node
         selected = select_node(db, root[0], c_explore,
                                cfg.mcts.k_progressive, cfg.mcts.alpha_progressive,
                                cfg.mcts.max_depth)
@@ -134,7 +134,7 @@ def status(tree, as_json, exp_id):
         exp_dir = find_latest_exploration(home)
 
     if not exp_dir or not exp_dir.exists():
-        click.echo("Error: No exploration found. Run 'autodiscovery init --domain <topic>' first.", err=True)
+        click.echo("Error: No exploration found. Run 'surprisal init --domain <topic>' first.", err=True)
         sys.exit(1)
 
     exp = load_exploration(exp_dir)
@@ -186,7 +186,7 @@ def _print_tree(db, parent_id, indent):
 @click.option("--exploration", "exp_id", default=None)
 def export(fmt, top, min_surprisal, training_data, exp_id):
     """Export ranked hypotheses."""
-    from autodiscovery.export import export_json, export_csv, export_markdown, export_training_data
+    from surprisal.export import export_json, export_csv, export_markdown, export_training_data
 
     home = get_home()
     if exp_id:
@@ -195,7 +195,7 @@ def export(fmt, top, min_surprisal, training_data, exp_id):
         exp_dir = find_latest_exploration(home)
 
     if not exp_dir or not exp_dir.exists():
-        click.echo("Error: No exploration found. Run 'autodiscovery init --domain <topic>' first.", err=True)
+        click.echo("Error: No exploration found. Run 'surprisal init --domain <topic>' first.", err=True)
         sys.exit(1)
 
     db = Database(exp_dir / "tree.db")
@@ -222,12 +222,12 @@ def resume(target, as_json):
     if target:
         exp_dir = home / target
         if not exp_dir.exists():
-            click.echo(f"Error: Branch or exploration '{target}' not found. Run 'autodiscovery status --tree' to see available branches.", err=True)
+            click.echo(f"Error: Branch or exploration '{target}' not found. Run 'surprisal status --tree' to see available branches.", err=True)
             sys.exit(1)
     else:
         exp_dir = find_latest_exploration(home)
         if not exp_dir:
-            click.echo("Error: No explorations found. Run 'autodiscovery init --domain <topic>' first.", err=True)
+            click.echo("Error: No explorations found. Run 'surprisal init --domain <topic>' first.", err=True)
             sys.exit(1)
 
     click.echo(f"Resuming exploration at {exp_dir}")

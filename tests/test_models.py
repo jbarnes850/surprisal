@@ -1,5 +1,5 @@
 import json
-from autodiscovery.models import Node, BeliefSample, AgentInvocation, Exploration
+from surprisal.models import Node, BeliefSample, AgentInvocation, Exploration
 
 
 def test_node_creation_with_defaults():

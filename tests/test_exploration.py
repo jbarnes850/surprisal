@@ -1,7 +1,7 @@
 import json
 import pytest
 from pathlib import Path
-from autodiscovery.exploration import (
+from surprisal.exploration import (
     create_exploration, load_exploration, find_latest_exploration,
     update_session, get_session_ids, ExplorationMeta,
 )

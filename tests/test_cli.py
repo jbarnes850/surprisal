@@ -1,10 +1,10 @@
 import json
 from click.testing import CliRunner
-from autodiscovery.cli import main
+from surprisal.cli import main
 
 
 def test_init_creates_exploration(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTODISCOVERY_HOME", str(tmp_path))
+    monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
     runner = CliRunner()
     result = runner.invoke(main, ["init", "--domain", "test domain", "--seed", "test hypothesis", "--json"])
     assert result.exit_code == 0
@@ -14,7 +14,7 @@ def test_init_creates_exploration(tmp_path, monkeypatch):
 
 
 def test_init_is_idempotent(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTODISCOVERY_HOME", str(tmp_path))
+    monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
     runner = CliRunner()
     r1 = runner.invoke(main, ["init", "--domain", "test", "--seed", "h", "--json"])
     r2 = runner.invoke(main, ["init", "--domain", "test", "--seed", "h", "--json"])
@@ -22,7 +22,7 @@ def test_init_is_idempotent(tmp_path, monkeypatch):
 
 
 def test_status_shows_exploration(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTODISCOVERY_HOME", str(tmp_path))
+    monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
     runner = CliRunner()
     runner.invoke(main, ["init", "--domain", "test domain", "--seed", "h"])
     result = runner.invoke(main, ["status"])
@@ -31,7 +31,7 @@ def test_status_shows_exploration(tmp_path, monkeypatch):
 
 
 def test_config_show(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTODISCOVERY_HOME", str(tmp_path))
+    monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
     runner = CliRunner()
     result = runner.invoke(main, ["config", "--show"])
     assert result.exit_code == 0
@@ -39,7 +39,7 @@ def test_config_show(tmp_path, monkeypatch):
 
 
 def test_export_no_exploration_fails(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTODISCOVERY_HOME", str(tmp_path))
+    monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
     runner = CliRunner()
     result = runner.invoke(main, ["export"])
     assert result.exit_code != 0
@@ -47,7 +47,7 @@ def test_export_no_exploration_fails(tmp_path, monkeypatch):
 
 
 def test_prune_dry_run(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTODISCOVERY_HOME", str(tmp_path))
+    monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
     runner = CliRunner()
     runner.invoke(main, ["init", "--domain", "test", "--seed", "h"])
     result = runner.invoke(main, ["prune", "--dry-run"])
@@ -55,7 +55,7 @@ def test_prune_dry_run(tmp_path, monkeypatch):
 
 
 def test_explore_dry_run(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTODISCOVERY_HOME", str(tmp_path))
+    monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
     runner = CliRunner()
     runner.invoke(main, ["init", "--domain", "test", "--seed", "h"])
     result = runner.invoke(main, ["explore", "--dry-run"])

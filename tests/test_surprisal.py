@@ -1,5 +1,5 @@
 import pytest
-from autodiscovery.surprisal import (
+from surprisal.bayesian import (
     estimate_beta_params,
     kl_divergence_beta,
     bayesian_surprise_with_shift,

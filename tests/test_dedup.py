@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
-from autodiscovery.models import Node
-from autodiscovery.dedup import (
+from surprisal.models import Node
+from surprisal.dedup import (
     embed_hypothesis, build_embeddings, build_hac_tree,
     merge_decision, deduplicate,
 )

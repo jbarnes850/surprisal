@@ -1,5 +1,5 @@
 import pytest
-from autodiscovery.fsm import select_next_state, FSMResponse
+from surprisal.fsm import select_next_state, FSMResponse
 
 
 def test_start_goes_to_generator():

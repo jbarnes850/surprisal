@@ -3,7 +3,7 @@ import shutil
 import uuid
 from pathlib import Path
 from typing import Optional
-from autodiscovery.models import Node
+from surprisal.models import Node
 
 
 def create_workspace(base_dir: Path, branch_id: str) -> Path:

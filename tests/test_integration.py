@@ -3,11 +3,11 @@
 import json
 import pytest
 from click.testing import CliRunner
-from autodiscovery.db import Database
-from autodiscovery.models import Node
-from autodiscovery.mcts import select_node, backpropagate
-from autodiscovery.surprisal import compute_surprisal
-from autodiscovery.cli import main
+from surprisal.db import Database
+from surprisal.models import Node
+from surprisal.mcts import select_node, backpropagate
+from surprisal.bayesian import compute_surprisal
+from surprisal.cli import main
 
 
 class TestSingleNodeLifecycle:
@@ -87,7 +87,7 @@ class TestCLIIntegration:
     """Test CLI commands work end-to-end."""
 
     def test_init_then_status(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AUTODISCOVERY_HOME", str(tmp_path))
+        monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
         runner = CliRunner()
 
         # Init
@@ -103,7 +103,7 @@ class TestCLIIntegration:
         assert status["nodes_total"] >= 1
 
     def test_init_then_explore_dryrun(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AUTODISCOVERY_HOME", str(tmp_path))
+        monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
         runner = CliRunner()
         runner.invoke(main, ["init", "--domain", "test", "--seed", "hypothesis"])
         r = runner.invoke(main, ["explore", "--dry-run"])
@@ -111,7 +111,7 @@ class TestCLIIntegration:
         assert "Would expand" in r.output
 
     def test_init_then_explore_budget(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AUTODISCOVERY_HOME", str(tmp_path))
+        monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
         runner = CliRunner()
         runner.invoke(main, ["init", "--domain", "test", "--seed", "hypothesis"])
         r = runner.invoke(main, ["explore", "--budget", "2", "--concurrency", "1"])
@@ -121,7 +121,7 @@ class TestCLIIntegration:
         assert output["iterations"] >= 1
 
     def test_export_after_explore(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AUTODISCOVERY_HOME", str(tmp_path))
+        monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
         runner = CliRunner()
         runner.invoke(main, ["init", "--domain", "test", "--seed", "hypothesis"])
         runner.invoke(main, ["explore", "--budget", "3", "--concurrency", "1"])
@@ -129,7 +129,7 @@ class TestCLIIntegration:
         assert r.exit_code == 0, f"export failed: {r.output}"
 
     def test_prune_after_explore(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AUTODISCOVERY_HOME", str(tmp_path))
+        monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
         runner = CliRunner()
         runner.invoke(main, ["init", "--domain", "test", "--seed", "hypothesis"])
         runner.invoke(main, ["explore", "--budget", "3", "--concurrency", "1"])

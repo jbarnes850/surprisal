@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
-from autodiscovery.models import Node, BeliefSample, AgentInvocation
-from autodiscovery.db import Database
+from surprisal.models import Node, BeliefSample, AgentInvocation
+from surprisal.db import Database
 
 
 def _make_node(exploration_id="exp-1", parent_id=None, status="pending", **overrides):

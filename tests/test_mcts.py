@@ -1,7 +1,7 @@
 import pytest
 import math
-from autodiscovery.models import Node
-from autodiscovery.mcts import compute_uct, select_node, backpropagate, max_children
+from surprisal.models import Node
+from surprisal.mcts import compute_uct, select_node, backpropagate, max_children
 
 
 def test_uct_unvisited_is_infinity():

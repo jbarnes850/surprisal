@@ -1,6 +1,6 @@
 import json
-from autodiscovery.models import Node
-from autodiscovery.export import export_json, export_csv, export_markdown, export_training_data
+from surprisal.models import Node
+from surprisal.export import export_json, export_csv, export_markdown, export_training_data
 
 
 def _seed_nodes(db):

@@ -11,7 +11,7 @@ INFRA_ERROR_CODES = {125, 126, 127}
 class DockerSandbox:
     def __init__(
         self,
-        image: str = "autodiscovery-sandbox:latest",
+        image: str = "surprisal-sandbox:latest",
         memory: str = "2g",
         cpus: str = "1.5",
         timeout: int = 600,
@@ -69,7 +69,7 @@ class DockerSandbox:
         )
 
     @staticmethod
-    async def build_image(dockerfile_dir: str, tag: str = "autodiscovery-sandbox:latest"):
+    async def build_image(dockerfile_dir: str, tag: str = "surprisal-sandbox:latest"):
         proc = await asyncio.create_subprocess_exec(
             "docker", "build", "-t", tag, dockerfile_dir,
             stdout=asyncio.subprocess.PIPE,

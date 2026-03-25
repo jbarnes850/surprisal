@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
-from autodiscovery.models import Node
-from autodiscovery.workspace import (
+from surprisal.models import Node
+from surprisal.workspace import (
     create_workspace, write_branch_context, write_claude_md,
     assign_branch_id, copy_parent_memory, get_experiment_dir,
 )

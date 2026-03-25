@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import MagicMock
-from autodiscovery.orchestrator import AtomicCounter
+from surprisal.orchestrator import AtomicCounter
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-from autodiscovery.agents.docker import DockerSandbox
+from surprisal.agents.docker import DockerSandbox
 
 
 def test_docker_builds_run_command():

@@ -1,4 +1,4 @@
-from autodiscovery.agents.codex import CodexAgent
+from surprisal.agents.codex import CodexAgent
 
 
 def test_codex_builds_correct_command():

@@ -1,7 +1,7 @@
 import csv
 import io
 import json
-from autodiscovery.db import Database
+from surprisal.db import Database
 
 
 def export_json(db: Database, top: int = None, min_surprisal: float = None) -> dict:

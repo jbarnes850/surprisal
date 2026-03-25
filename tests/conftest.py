@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from autodiscovery.db import Database
+from surprisal.db import Database
 
 
 @pytest.fixture

@@ -1,11 +1,11 @@
-"""SQLite database layer for autodiscovery MCTS nodes and telemetry."""
+"""SQLite database layer for surprisal MCTS nodes and telemetry."""
 
 import sqlite3
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
 from typing import Optional
 
-from autodiscovery.models import AgentInvocation, BeliefSample, Node
+from surprisal.models import AgentInvocation, BeliefSample, Node
 
 
 class Database:

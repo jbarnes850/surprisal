@@ -1,7 +1,7 @@
 import pytest
 import json
-from autodiscovery.agents.base import AgentResult
-from autodiscovery.agents.claude import ClaudeAgent
+from surprisal.agents.base import AgentResult
+from surprisal.agents.claude import ClaudeAgent
 
 
 def test_claude_agent_builds_correct_command():

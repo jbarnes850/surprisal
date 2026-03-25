@@ -5,7 +5,7 @@ Pure logic over the Database layer; never calls agents.
 
 import math
 
-from autodiscovery.db import Database
+from surprisal.db import Database
 
 
 def compute_uct(

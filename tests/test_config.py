@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from autodiscovery.config import AutoDiscoveryConfig, load_config, save_config
+from surprisal.config import AutoDiscoveryConfig, load_config, save_config
 
 
 def test_default_config_has_expected_values():

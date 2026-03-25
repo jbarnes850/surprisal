@@ -6,7 +6,7 @@ import numpy as np
 from typing import Optional
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import pdist
-from autodiscovery.db import Database
+from surprisal.db import Database
 
 
 def embed_hypothesis(text: str) -> np.ndarray:

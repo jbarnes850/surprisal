@@ -1,4 +1,4 @@
-# autodiscovery
+# surprisal
 
 Open-ended scientific discovery via Bayesian surprise. Uses MCTS to explore a hypothesis tree, dispatching Claude and Codex agents to generate experiments, execute code in Docker sandboxes, and measure belief shifts.
 
@@ -8,37 +8,37 @@ Based on [AutoDiscovery (NeurIPS 2025)](https://github.com/allenai/autodiscovery
 
 ```bash
 # Install
-git clone https://github.com/jbarnes850/autodiscovery && cd autodiscovery
+git clone https://github.com/jbarnes850/autodiscovery && cd surprisal
 uv sync
 
 # Build the sandbox image (network-isolated Python environment)
-docker build -t autodiscovery-sandbox:latest sandbox/
+docker build -t surprisal-sandbox:latest sandbox/
 
 # Initialize an exploration
-uv run autodiscovery init \
+uv run surprisal init \
   --domain "AI for scientific discovery" \
   --seed "LLM self-evaluation accuracy correlates inversely with task compositional depth"
 
 # Run MCTS exploration (budget = number of hypothesis nodes to expand)
-uv run autodiscovery explore --budget 10 --concurrency 1
+uv run surprisal explore --budget 10 --concurrency 1
 
 # Check the hypothesis tree
-uv run autodiscovery status --tree
+uv run surprisal status --tree
 
 # Export ranked discoveries
-uv run autodiscovery export --top 5 --format md
+uv run surprisal export --top 5 --format md
 ```
 
 ## Example
 
 ```bash
-uv run autodiscovery init \
+uv run surprisal init \
   --domain "neural scaling laws across modalities" \
   --seed "Vision transformer scaling exponents differ from language model scaling exponents on equivalent compute budgets"
 
-uv run autodiscovery explore --budget 20 --concurrency 2
+uv run surprisal explore --budget 20 --concurrency 2
 
-uv run autodiscovery status --tree
+uv run surprisal status --tree
 # Exploration: a3f7e2 (neural scaling laws across modalities)
 # Nodes: 21 total, 18 verified, 0 expanding, 3 failed
 # Surprisals: 4 found (22.2% rate)
@@ -50,7 +50,7 @@ uv run autodiscovery status --tree
 #      [2] (verified) Cross-modal transfer learning efficiency follows a power... BS=1.87 SHIFTED!
 #    [1] (verified) Compute-optimal model size ratios (Chinchilla) transfer...
 
-uv run autodiscovery export --top 3 --format json | jq '.hypotheses[].hypothesis'
+uv run surprisal export --top 3 --format json | jq '.hypotheses[].hypothesis'
 # "Log-linear fits to simulated ViT loss curves show steeper scaling exponents..."
 # "Cross-modal transfer learning efficiency follows a power law..."
 # "Attention head scaling exhibits phase transitions at critical compute thresholds..."
@@ -75,13 +75,13 @@ The system optimizes for **variance** -- it seeks hypotheses where the model gen
 
 | Command | Description |
 |---------|-------------|
-| `autodiscovery init` | Create a new exploration |
-| `autodiscovery explore` | Run MCTS exploration |
-| `autodiscovery status` | Show tree state and hypothesis tree |
-| `autodiscovery export` | Export ranked hypotheses (JSON, CSV, markdown, training data) |
-| `autodiscovery prune` | Remove low-value branches (`--dry-run` supported) |
-| `autodiscovery config` | Manage settings |
-| `autodiscovery resume` | Resume a branch or exploration |
+| `surprisal init` | Create a new exploration |
+| `surprisal explore` | Run MCTS exploration |
+| `surprisal status` | Show tree state and hypothesis tree |
+| `surprisal export` | Export ranked hypotheses (JSON, CSV, markdown, training data) |
+| `surprisal prune` | Remove low-value branches (`--dry-run` supported) |
+| `surprisal config` | Manage settings |
+| `surprisal resume` | Resume a branch or exploration |
 
 All commands accept `--json` for machine-readable output. All commands are idempotent.
 
@@ -125,10 +125,10 @@ generator -> programmer -> Docker executor -> analyst -> reviewer
 ## Configuration
 
 ```bash
-uv run autodiscovery config --show
-uv run autodiscovery config --set mcts.c_explore 2.0       # more exploration
-uv run autodiscovery config --set mcts.belief_samples 30    # production (60 calls/node)
-uv run autodiscovery config --set agents.claude_model opus  # use Opus for research
+uv run surprisal config --show
+uv run surprisal config --set mcts.c_explore 2.0       # more exploration
+uv run surprisal config --set mcts.belief_samples 30    # production (60 calls/node)
+uv run surprisal config --set agents.claude_model opus  # use Opus for research
 ```
 
 | Setting | Default | Description |

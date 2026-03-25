@@ -2,13 +2,13 @@ import asyncio
 import signal
 import logging
 from pathlib import Path
-from autodiscovery.config import AutoDiscoveryConfig
-from autodiscovery.db import Database
-from autodiscovery.mcts import select_node, backpropagate, max_children
-from autodiscovery.models import Node
-from autodiscovery.workspace import create_workspace, assign_branch_id, write_branch_context, write_claude_md
+from surprisal.config import AutoDiscoveryConfig
+from surprisal.db import Database
+from surprisal.mcts import select_node, backpropagate, max_children
+from surprisal.models import Node
+from surprisal.workspace import create_workspace, assign_branch_id, write_branch_context, write_claude_md
 
-logger = logging.getLogger("autodiscovery")
+logger = logging.getLogger("surprisal")
 
 
 class AtomicCounter:
@@ -94,7 +94,7 @@ async def worker_loop(
 ) -> None:
     """Per-worker loop: select -> expand -> execute -> backpropagate."""
     import uuid
-    from autodiscovery.fsm import select_next_state, FSMResponse
+    from surprisal.fsm import select_next_state, FSMResponse
 
     while not shutdown.is_set():
         if not await counter.decrement():
@@ -140,7 +140,7 @@ async def worker_loop(
         # Run full FSM with real agent calls
         logger.info(f"Worker expanding node {child_id} at depth {child.depth}")
         try:
-            from autodiscovery.fsm_runner import run_live_fsm
+            from surprisal.fsm_runner import run_live_fsm
             success = await run_live_fsm(
                 node_id=child_id,
                 db=db,
