@@ -27,7 +27,8 @@ class ClaudeAgent:
         cmd.extend(["--output-format", output_format])
         cmd.extend(["--model", self.model])
         cmd.extend(["--max-turns", str(self.max_turns)])
-        cmd.extend(["--dangerously-skip-permissions", "--no-session-persistence"])
+        cmd.extend(["--dangerously-skip-permissions", "--no-session-persistence",
+                    "--disable-slash-commands"])
         if no_tools:
             cmd.extend(["--disallowedTools", "Bash", "Edit", "Write", "Read",
                         "Glob", "Grep", "WebSearch", "WebFetch"])
