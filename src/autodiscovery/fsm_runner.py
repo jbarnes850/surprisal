@@ -179,6 +179,10 @@ async def run_live_fsm(
 
         # ── Experiment Programmer (Codex/Claude) ──
         elif state == "experiment_programmer":
+            # If this is a retry (coming from analyst), increment failure count
+            if last_response and last_response.error:
+                node.fsm_failure_count += 1
+                db.update_node(node_id, fsm_failure_count=node.fsm_failure_count)
             feedback = ""
             if last_response and last_response.feedback:
                 feedback = f"\n\nPrevious attempt feedback: {last_response.feedback}"
@@ -255,8 +259,8 @@ async def run_live_fsm(
             # Default: if experiment ran (exit=0) and we can't parse error status, assume success
             is_error = data.get("error", True) if data else (node.experiment_exit_code != 0)
             if is_error:
-                node.fsm_failure_count += 1
-                db.update_node(node_id, fsm_failure_count=node.fsm_failure_count)
+                # NOTE: failure_count is incremented when we actually re-enter programmer,
+                # not here. select_next_state checks the current count for the threshold.
                 last_response = FSMResponse(error=True, feedback=data.get("feedback", "Unknown error"))
             else:
                 analysis_summary = data.get("summary", result.raw[:500])
@@ -281,8 +285,9 @@ async def run_live_fsm(
             # Default to approved if we can't parse the response
             is_error = data.get("error", False) if data else False
             if is_error:
-                node.fsm_revision_count += 1
-                db.update_node(node_id, fsm_revision_count=node.fsm_revision_count)
+                # NOTE: do NOT increment revision_count here — select_next_state
+                # checks the current value to decide if revision is allowed.
+                # The count is incremented ONLY when we actually enter experiment_reviser.
                 last_response = FSMResponse(error=True, feedback=data.get("feedback", ""))
                 (exp_dir / "review.md").write_text(f"REJECTED: {data.get('feedback', '')}")
             else:
@@ -292,6 +297,8 @@ async def run_live_fsm(
 
         # ── Experiment Reviser (Codex) ──
         elif state == "experiment_reviser":
+            node.fsm_revision_count += 1
+            db.update_node(node_id, fsm_revision_count=node.fsm_revision_count)
             prompt = (
                 f"The experiment was rejected. Feedback: {last_response.feedback if last_response else ''}\n\n"
                 f"Original plan: {experiment_plan}\n\n"
