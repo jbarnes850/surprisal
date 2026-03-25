@@ -186,14 +186,15 @@ async def run_live_fsm(
                 "statsmodels, seaborn, networkx, sympy. No network access. "
                 "Print all results to stdout. Keep it simple and self-contained."
             )
-            # Programmer gets tools (Read to check files, Bash to test code)
-            # but limited turns to prevent runaway loops
-            prog_agent = ClaudeAgent(model=config.agents.claude_model, max_turns=5)
+            # Programmer outputs code as text — no tools needed
+            # The FSM saves the code to experiment.py
+            prog_agent = ClaudeAgent(model=config.agents.claude_model, max_turns=1)
             result = await prog_agent.invoke(
                 prompt=prompt,
                 output_format="text",
                 cwd=str(exp_dir),
-                timeout=180,
+                timeout=60,
+                no_tools=True,
             )
             logger.info(f"  Programmer exit={result.exit_code}, len={len(result.raw)}")
 
