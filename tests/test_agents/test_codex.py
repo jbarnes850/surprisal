@@ -3,18 +3,16 @@ from autodiscovery.agents.codex import CodexAgent
 
 def test_codex_builds_correct_command():
     agent = CodexAgent(model="gpt-5.4")
-    cmd = agent.build_command(prompt="write code", cwd="/tmp/workspace")
+    cmd = agent.build_command(prompt="write code")
     assert cmd[0] == "codex"
-    assert "-q" in cmd
+    assert "exec" in cmd
     assert "--full-auto" in cmd
-    assert "--model" in cmd
-    assert "gpt-5.4" in cmd
-    assert "-f" in cmd
-    assert "/tmp/workspace" in cmd
+    assert 'model="gpt-5.4"' in cmd
     assert cmd[-1] == "write code"
 
 
-def test_codex_command_without_cwd():
+def test_codex_command_with_output_file():
     agent = CodexAgent()
-    cmd = agent.build_command(prompt="test")
-    assert "-f" not in cmd
+    cmd = agent.build_command(prompt="test", output_file="/tmp/out.txt")
+    assert "-o" in cmd
+    assert "/tmp/out.txt" in cmd

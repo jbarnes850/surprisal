@@ -137,17 +137,28 @@ async def worker_loop(
         write_branch_context(ws, branch_path)
         write_claude_md(ws, domain, branch_path)
 
-        # Placeholder: mark as verified with no surprisal.
-        # Real FSM integration will happen in Task 16 when live agents are tested.
+        # Run full FSM with real agent calls
         logger.info(f"Worker expanding node {child_id} at depth {child.depth}")
+        try:
+            from autodiscovery.fsm_runner import run_live_fsm
+            success = await run_live_fsm(
+                node_id=child_id,
+                db=db,
+                config=config,
+                workspace=ws,
+                domain=domain,
+                branch_path=branch_path,
+            )
+        except Exception as e:
+            logger.error(f"FSM error for node {child_id}: {e}")
+            db.update_node(child_id, status="failed", virtual_loss=0)
+            success = False
 
-        db.update_node(child_id,
-            status="verified",
-            hypothesis=f"Placeholder hypothesis at depth {child.depth}",
-            virtual_loss=0,
-            bayesian_surprise=0.0,
-            belief_shifted=False,
+        # Backpropagate surprisal
+        node = db.get_node(child_id)
+        surprisal_value = 1 if node.belief_shifted else 0
+        backpropagate(db, child_id, surprisal_value)
+        logger.info(
+            f"Node {child_id} completed: success={success}, "
+            f"surprisal={surprisal_value}, BS={node.bayesian_surprise}"
         )
-
-        backpropagate(db, child_id, surprisal_value=0)
-        logger.info(f"Node {child_id} completed (placeholder)")

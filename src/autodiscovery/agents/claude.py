@@ -21,13 +21,16 @@ class ClaudeAgent:
         fork_session: bool = False,
         json_schema: Optional[dict] = None,
         cwd: Optional[str] = None,
+        no_tools: bool = False,
     ) -> list[str]:
         cmd = ["claude", "-p", prompt]
         cmd.extend(["--output-format", output_format])
         cmd.extend(["--model", self.model])
         cmd.extend(["--max-turns", str(self.max_turns)])
-        cmd.append("--dangerously-skip-permissions")
-        cmd.append("--bare")
+        cmd.extend(["--dangerously-skip-permissions", "--no-session-persistence"])
+        if no_tools:
+            cmd.extend(["--disallowedTools", "Bash", "Edit", "Write", "Read",
+                        "Glob", "Grep", "WebSearch", "WebFetch"])
         if system_prompt_file:
             cmd.extend(["--system-prompt-file", system_prompt_file])
         if resume_session:
@@ -51,6 +54,7 @@ class ClaudeAgent:
         json_schema: Optional[dict] = None,
         cwd: Optional[str] = None,
         timeout: int = 600,
+        no_tools: bool = False,
     ) -> AgentResult:
         cmd = self.build_command(
             prompt=prompt,
@@ -60,6 +64,7 @@ class ClaudeAgent:
             resume_session=resume_session,
             fork_session=fork_session,
             json_schema=json_schema,
+            no_tools=no_tools,
         )
         start = time.monotonic()
         proc = await asyncio.create_subprocess_exec(

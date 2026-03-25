@@ -13,7 +13,6 @@ def test_claude_agent_builds_correct_command():
     )
     assert cmd[0] == "claude"
     assert "-p" in cmd
-    assert "--bare" in cmd
     assert "--dangerously-skip-permissions" in cmd
     assert "--model" in cmd
     assert "opus" in cmd
