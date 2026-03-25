@@ -1,4 +1,13 @@
-# surprisal
+<p align="center">
+  <img src="public/banner.jpg" alt="Surprisal — open-ended scientific discovery via bayesian surprise" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/jbarnes850/surprisal/actions"><img src="https://img.shields.io/github/actions/workflow/status/jbarnes850/surprisal/ci.yml?branch=main&style=flat-square" alt="CI"></a>
+  <a href="https://github.com/jbarnes850/surprisal/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square" alt="Python 3.12+"></a>
+  <a href="https://arxiv.org/abs/2602.07670"><img src="https://img.shields.io/badge/arXiv-2602.07670-b31b1b?style=flat-square" alt="arXiv"></a>
+</p>
 
 Open-ended scientific discovery via Bayesian surprise. Uses MCTS to explore a hypothesis tree, dispatching Claude and Codex agents to generate experiments, execute code in Docker sandboxes, and measure belief shifts.
 
