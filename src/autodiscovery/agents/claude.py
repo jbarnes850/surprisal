@@ -67,12 +67,16 @@ class ClaudeAgent:
             json_schema=json_schema,
             no_tools=no_tools,
         )
+        import os
+        env = os.environ.copy()
+        env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
         start = time.monotonic()
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
+            env=env,
         )
         try:
             stdout, stderr = await asyncio.wait_for(

@@ -188,7 +188,7 @@ async def run_live_fsm(
             )
             # Programmer outputs code as text — no tools needed
             # The FSM saves the code to experiment.py
-            prog_agent = ClaudeAgent(model=config.agents.claude_model, max_turns=1)
+            prog_agent = ClaudeAgent(model=config.agents.claude_model, max_turns=3)
             result = await prog_agent.invoke(
                 prompt=prompt,
                 output_format="text",
