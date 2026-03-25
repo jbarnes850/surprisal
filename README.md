@@ -8,7 +8,7 @@ Based on [AutoDiscovery (NeurIPS 2025)](https://github.com/allenai/autodiscovery
 
 ```bash
 # Install
-git clone https://github.com/jbarnes850/autodiscovery && cd surprisal
+git clone https://github.com/jbarnes850/surprisal && cd surprisal
 uv sync
 
 # Build the sandbox image (network-isolated Python environment)
