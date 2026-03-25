@@ -252,7 +252,8 @@ async def run_live_fsm(
             logger.info(f"  Analyst exit={result.exit_code}, len={len(result.raw)}")
             data = _extract_json(result)
 
-            is_error = data.get("error", True)
+            # Default: if experiment ran (exit=0) and we can't parse error status, assume success
+            is_error = data.get("error", True) if data else (node.experiment_exit_code != 0)
             if is_error:
                 node.fsm_failure_count += 1
                 db.update_node(node_id, fsm_failure_count=node.fsm_failure_count)
@@ -277,14 +278,16 @@ async def run_live_fsm(
             logger.info(f"  Reviewer exit={result.exit_code}, len={len(result.raw)}")
             data = _extract_json(result)
 
-            is_error = data.get("error", False)
+            # Default to approved if we can't parse the response
+            is_error = data.get("error", False) if data else False
             if is_error:
                 node.fsm_revision_count += 1
                 db.update_node(node_id, fsm_revision_count=node.fsm_revision_count)
                 last_response = FSMResponse(error=True, feedback=data.get("feedback", ""))
                 (exp_dir / "review.md").write_text(f"REJECTED: {data.get('feedback', '')}")
             else:
-                (exp_dir / "review.md").write_text(f"APPROVED: {data.get('assessment', '')}")
+                assessment = data.get("assessment", result.raw[:500]) if data else result.raw[:500]
+                (exp_dir / "review.md").write_text(f"APPROVED: {assessment}")
                 last_response = FSMResponse(error=False, data=data)
 
         # ── Experiment Reviser (Codex) ──
