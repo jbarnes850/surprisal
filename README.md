@@ -144,7 +144,7 @@ uv run autodiscovery config --set agents.claude_model opus  # use Opus for resea
 
 - Agarwal et al., [AutoDiscovery: Open-ended Scientific Discovery via Bayesian Surprise](https://openreview.net/forum?id=kJqTkj2HhF) (NeurIPS 2025)
 - Shi & Evans, [Surprising combinations of research contents and contexts are related to impact](https://www.nature.com/articles/s41467-023-36741-4) (Nature Communications 2023)
-- [Surprisal-Guided Selection](https://arxiv.org/abs/2602.07670) (2025)
+- [Surprisal-Guided Selection](https://arxiv.org/abs/2602.07670) (2026)
 
 ## License
 
