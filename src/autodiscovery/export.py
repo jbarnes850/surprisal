@@ -1,0 +1,105 @@
+import csv
+import io
+import json
+from autodiscovery.db import Database
+
+
+def export_json(db: Database, top: int = None, min_surprisal: float = None) -> dict:
+    """Export hypotheses as JSON, ranked by bayesian_surprise descending."""
+    nodes = _query_verified(db, top, min_surprisal)
+    return {
+        "hypotheses": [
+            {
+                "id": n.id,
+                "hypothesis": n.hypothesis,
+                "initial_hypothesis": n.initial_hypothesis,
+                "context": n.context,
+                "variables": n.variables,
+                "relationships": n.relationships,
+                "depth": n.depth,
+                "bayesian_surprise": n.bayesian_surprise,
+                "belief_shifted": n.belief_shifted,
+                "prior_alpha": n.prior_alpha,
+                "prior_beta": n.prior_beta,
+                "posterior_alpha": n.posterior_alpha,
+                "posterior_beta": n.posterior_beta,
+                "k_prior": n.k_prior,
+                "k_post": n.k_post,
+                "status": n.status,
+            }
+            for n in nodes
+        ],
+        "total": len(nodes),
+    }
+
+
+def export_csv(db: Database, top: int = None, min_surprisal: float = None) -> str:
+    """Export hypotheses as CSV string."""
+    nodes = _query_verified(db, top, min_surprisal)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["id", "hypothesis", "depth", "bayesian_surprise", "belief_shifted", "context"])
+    for n in nodes:
+        writer.writerow([n.id, n.hypothesis, n.depth, n.bayesian_surprise, n.belief_shifted, n.context])
+    return output.getvalue()
+
+
+def export_markdown(db: Database, top: int = None, min_surprisal: float = None) -> str:
+    """Export hypotheses as a markdown report."""
+    nodes = _query_verified(db, top, min_surprisal)
+    lines = ["# AutoDiscovery Results", ""]
+    lines.append(f"**Total hypotheses:** {len(nodes)}")
+    lines.append("")
+    for i, n in enumerate(nodes, 1):
+        bs = f"{n.bayesian_surprise:.3f}" if n.bayesian_surprise else "N/A"
+        lines.append(f"## {i}. {n.hypothesis}")
+        lines.append(f"- **Bayesian Surprise:** {bs}")
+        lines.append(f"- **Belief Shifted:** {n.belief_shifted}")
+        lines.append(f"- **Depth:** {n.depth}")
+        if n.context:
+            lines.append(f"- **Context:** {n.context}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def export_training_data(db: Database) -> str:
+    """Export all verified nodes as JSONL for surprisal predictor training."""
+    nodes = _query_verified(db, top=None, min_surprisal=None)
+    lines = []
+    for n in nodes:
+        sample = {
+            "hypothesis": n.hypothesis,
+            "context": n.context,
+            "variables": n.variables,
+            "relationships": n.relationships,
+            "depth": n.depth,
+            "bayesian_surprise": n.bayesian_surprise,
+            "belief_shifted": n.belief_shifted,
+            "surprisal": 1 if n.belief_shifted else 0,
+            "prior_alpha": n.prior_alpha,
+            "prior_beta": n.prior_beta,
+            "posterior_alpha": n.posterior_alpha,
+            "posterior_beta": n.posterior_beta,
+        }
+        lines.append(json.dumps(sample))
+    return "\n".join(lines)
+
+
+def _query_verified(db: Database, top: int = None, min_surprisal: float = None):
+    """Query verified nodes, sorted by bayesian_surprise descending."""
+    query = "SELECT * FROM nodes WHERE status = 'verified' AND bayesian_surprise IS NOT NULL"
+    params = []
+    if min_surprisal is not None:
+        query += " AND bayesian_surprise > ?"
+        params.append(min_surprisal)
+    query += " ORDER BY bayesian_surprise DESC"
+    if top:
+        query += " LIMIT ?"
+        params.append(top)
+    rows = db.execute(query, tuple(params)).fetchall()
+    # Convert rows to Node objects via db's row converter
+    results = []
+    for row in rows:
+        node = db.get_node(row[0])  # row[0] is the id
+        results.append(node)
+    return results
