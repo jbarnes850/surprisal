@@ -180,12 +180,35 @@ def test_node_visit_stats_view(tmp_db):
         tmp_db.insert_node(n)
 
     rows = tmp_db.execute(
-        "SELECT node_id, exploit_score, parent_visits FROM node_visit_stats WHERE node_id = ?",
+        "SELECT node_id, exploit_score, parent_visits, visit_count, virtual_loss, surprisal_sum FROM node_visit_stats WHERE node_id = ?",
         (child.id,),
     ).fetchall()
     assert len(rows) == 1
-    node_id, exploit_score, parent_visits = rows[0]
+    node_id, exploit_score, parent_visits, vc, vl, ss = rows[0]
     assert node_id == child.id
-    # exploit_score = surprisal_sum / visit_count = 5.0 / 20 = 0.25
+    # exploit_score = surprisal_sum / (visit_count + virtual_loss) = 5.0 / 20 = 0.25
     assert abs(exploit_score - 0.25) < 1e-9
     assert parent_visits == 100
+    assert vc == 20
+    assert vl == 0
+    assert abs(ss - 5.0) < 1e-9
+
+
+def test_node_visit_stats_with_virtual_loss(tmp_db):
+    parent = _make_node(visit_count=100)
+    child = _make_node(
+        parent_id=parent.id,
+        depth=1,
+        visit_count=20,
+        virtual_loss=2,
+        surprisal_sum=5.0,
+    )
+    for n in [parent, child]:
+        tmp_db.insert_node(n)
+
+    rows = tmp_db.execute(
+        "SELECT exploit_score FROM node_visit_stats WHERE node_id = ?",
+        (child.id,),
+    ).fetchall()
+    # exploit_score = 5.0 / (20 + 2) = 0.2272...
+    assert abs(rows[0][0] - 5.0 / 22) < 1e-9

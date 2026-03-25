@@ -78,8 +78,12 @@ class Database:
             CREATE VIEW IF NOT EXISTS node_visit_stats AS
             SELECT
                 c.id AS node_id,
-                CASE WHEN c.visit_count > 0
-                     THEN c.surprisal_sum / c.visit_count
+                c.parent_id,
+                c.visit_count,
+                c.virtual_loss,
+                c.surprisal_sum,
+                CASE WHEN (c.visit_count + c.virtual_loss) > 0
+                     THEN c.surprisal_sum / (c.visit_count + c.virtual_loss)
                      ELSE 0.0
                 END AS exploit_score,
                 COALESCE(p.visit_count, 0) AS parent_visits
