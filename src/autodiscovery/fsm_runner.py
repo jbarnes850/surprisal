@@ -144,7 +144,12 @@ async def run_live_fsm(
             prompt = (
                 f"Domain: {domain}\n\n"
                 f"Branch history:\n{branch_context}\n\n"
-                "Propose a new hypothesis and experiment plan. "
+                "Propose a new hypothesis and a SIMPLE experiment plan.\n"
+                "CRITICAL CONSTRAINTS:\n"
+                "- The experiment must use ONLY synthetic/simulated data (no downloads, no APIs, no internet)\n"
+                "- Keep the experiment under 50 lines of Python\n"
+                "- Use only: numpy, scipy, pandas, sklearn, matplotlib\n"
+                "- Print numerical results to stdout\n\n"
                 "Respond with JSON: {{\"hypothesis\": \"...\", \"context\": \"...\", "
                 "\"variables\": [...], \"relationships\": [...], "
                 "\"experiment_plan\": \"...\"}}"
