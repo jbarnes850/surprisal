@@ -34,12 +34,14 @@ class FakeBackend:
         config,
         system_prompt_file=None,
         session_id=None,
+        progress_callback=None,
     ):
         self.calls.append({
             "experiment_prompt": experiment_prompt,
             "workspace": workspace,
             "system_prompt_file": system_prompt_file,
             "session_id": session_id,
+            "progress_callback": progress_callback,
         })
         assert self._responses, "No fake backend responses remaining"
         response = self._responses.pop(0)

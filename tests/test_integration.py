@@ -17,6 +17,10 @@ def _patch_cli_explore(monkeypatch, *, iterations: int = 1) -> None:
         return LiteratureStatus(provider="huggingface")
 
     async def _fake_run_exploration(**kwargs):
+        progress_callback = kwargs.get("progress_callback")
+        if progress_callback is not None:
+            progress_callback("Starting exploration with budget 1 and concurrency 1.")
+            progress_callback("Node child-123: starting stage `experiment_generator`.")
         return {
             "status": "completed",
             "iterations": iterations,
@@ -139,6 +143,16 @@ class TestCLIIntegration:
         output = json.loads(r.output)
         assert output["iterations"] >= 1
 
+    def test_explore_streams_progress_messages(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
+        _patch_cli_explore(monkeypatch, iterations=1)
+        runner = CliRunner()
+        runner.invoke(main, ["init", "--domain", "test", "--seed", "hypothesis"])
+        r = runner.invoke(main, ["explore", "--budget", "1", "--concurrency", "1"])
+        assert r.exit_code == 0, f"explore failed: {r.output}"
+        assert "Progress: Starting exploration with budget 1 and concurrency 1." in r.output
+        assert "Progress: Node child-123: starting stage `experiment_generator`." in r.output
+
     def test_resume_dry_run_json(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
         runner = CliRunner()
@@ -166,3 +180,44 @@ class TestCLIIntegration:
         runner.invoke(main, ["explore", "--budget", "3", "--concurrency", "1"])
         r = runner.invoke(main, ["prune", "--dry-run"])
         assert r.exit_code == 0, f"prune failed: {r.output}"
+
+    def test_explore_smoke_creates_verified_child_node(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
+
+        async def _fake_detect_providers():
+            return ProviderStatus(claude_available=True, codex_available=True)
+
+        async def _fake_detect_literature_provider():
+            return LiteratureStatus(provider="huggingface")
+
+        async def _fake_run_live_fsm(node_id, db, progress_callback=None, **kwargs):
+            if progress_callback is not None:
+                progress_callback(f"Node {node_id}: starting stage `experiment_generator`.")
+                progress_callback(f"Node {node_id}: starting stage `experiment_runner`.")
+            db.update_node(
+                node_id,
+                hypothesis="Verified smoke hypothesis",
+                status="verified",
+                virtual_loss=0,
+                belief_shifted=False,
+                bayesian_surprise=0.0,
+            )
+            return True
+
+        monkeypatch.setattr("surprisal.providers.detect_providers", _fake_detect_providers)
+        monkeypatch.setattr("surprisal.providers.detect_literature_provider", _fake_detect_literature_provider)
+        monkeypatch.setattr("surprisal.fsm_runner.run_live_fsm", _fake_run_live_fsm)
+
+        runner = CliRunner()
+        runner.invoke(main, ["init", "--domain", "smoke test", "--seed", "root hypothesis"])
+        explore = runner.invoke(main, ["explore", "--budget", "1", "--concurrency", "1"])
+        assert explore.exit_code == 0, f"explore failed: {explore.output}"
+        assert "Progress: Node " in explore.output
+        assert "starting stage `experiment_runner`" in explore.output
+
+        status = runner.invoke(main, ["status", "--json"])
+        assert status.exit_code == 0, f"status failed: {status.output}"
+        payload = json.loads(status.output)
+        assert payload["nodes_total"] == 2
+        assert payload["verified"] == 2
+        assert payload["failed"] == 0

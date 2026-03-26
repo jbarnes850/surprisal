@@ -10,6 +10,7 @@ from surprisal.dedup import deduplicate
 from surprisal.mcts import select_node, backpropagate
 from surprisal.models import Node
 from surprisal.providers import LiteratureStatus, ProviderStatus, detect_literature_provider, detect_providers
+from surprisal.progress import ProgressCallback, emit_progress
 from surprisal.workspace import (
     assign_branch_id,
     copy_parent_memory,
@@ -61,6 +62,7 @@ async def run_exploration(
     domain: str,
     providers: ProviderStatus | None = None,
     literature_provider: LiteratureStatus | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict:
     """Main exploration loop -- spawns worker pool, handles shutdown."""
     # Detect available providers if not passed in
@@ -85,6 +87,10 @@ async def run_exploration(
         return {"status": "budget_exhausted", "iterations": 0}
 
     db.reset_stale_expanding(exploration_id=exploration_id)
+    emit_progress(
+        progress_callback,
+        f"Starting exploration with budget {remaining} and concurrency {concurrency}.",
+    )
 
     selection_lock = asyncio.Lock()
     dedup_lock = asyncio.Lock()
@@ -103,7 +109,7 @@ async def run_exploration(
         asyncio.create_task(
             worker_loop(db, exploration_dir, selection_lock, counter,
                         dedup_lock, dedup_checkpoint, shutdown, c_explore, config,
-                        root_id, domain, providers, literature_provider)
+                        root_id, domain, providers, literature_provider, progress_callback)
         )
         for _ in range(concurrency)
     ]
@@ -147,6 +153,7 @@ async def worker_loop(
     domain: str,
     providers: ProviderStatus | None = None,
     literature_provider: LiteratureStatus | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> None:
     """Per-worker loop: select -> expand -> execute -> backpropagate."""
     import uuid
@@ -185,6 +192,10 @@ async def worker_loop(
                 virtual_loss=config.mcts.virtual_loss,
             )
             db.insert_node(child)
+            emit_progress(
+                progress_callback,
+                f"Node {child_id}: selected for expansion at depth {child.depth}.",
+            )
 
         # Set up workspace
         workspaces_dir = exploration_dir / "workspaces"
@@ -210,6 +221,7 @@ async def worker_loop(
                 branch_path=branch_path,
                 providers=providers,
                 literature_provider=literature_provider,
+                progress_callback=progress_callback,
             )
         except Exception as e:
             logger.error(f"FSM error for node {child_id}: {e}")

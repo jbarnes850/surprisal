@@ -8,6 +8,7 @@ def test_codex_builds_correct_command():
     assert "exec" in cmd
     assert "--full-auto" in cmd
     assert "--json" in cmd
+    assert "--skip-git-repo-check" in cmd
     assert 'model="gpt-5.4"' in cmd
     assert "--ephemeral" not in cmd
     assert cmd[-1] == "write code"

@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from surprisal.agents.base import AgentResult
-from surprisal.config import SandboxConfig, CredentialsConfig
+from surprisal.config import CredentialsConfig, SandboxConfig, resolve_sandbox_image
+from surprisal.progress import ProgressCallback
 
 
 @runtime_checkable
@@ -16,6 +17,7 @@ class SandboxBackend(Protocol):
         config: SandboxConfig,
         system_prompt_file: str | None = None,
         session_id: str | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> AgentResult:
         ...
 
@@ -47,6 +49,8 @@ def create_backend(
     if config.backend == "local" or config.backend == "auto":
         if config.backend == "auto" and gpu_available is not None:
             config.gpu = gpu_available
+        config.image = resolve_sandbox_image(config.image, config.gpu)
         return ExperimentContainer(config=config, credentials=credentials)
 
+    config.image = resolve_sandbox_image(config.image, config.gpu)
     return ExperimentContainer(config=config, credentials=credentials)

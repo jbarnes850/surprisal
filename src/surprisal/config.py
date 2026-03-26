@@ -3,6 +3,11 @@ from pathlib import Path
 import tomllib
 
 
+AUTO_IMAGE = "auto"
+DEFAULT_CPU_IMAGE = "surprisal-cpu:latest"
+DEFAULT_GPU_IMAGE = "surprisal-gpu:latest"
+
+
 @dataclass
 class GeneralConfig:
     default_budget: int = 100
@@ -33,7 +38,7 @@ class AgentsConfig:
 @dataclass
 class SandboxConfig:
     backend: str = "auto"
-    image: str = "surprisal-gpu:latest"
+    image: str = AUTO_IMAGE
     gpu: bool = True
     memory_limit: str = "16g"
     cpu_limit: str = "4"
@@ -75,6 +80,13 @@ class AutoDiscoveryConfig:
             setattr(section, field_name, float(value))
         else:
             setattr(section, field_name, value)
+
+
+def resolve_sandbox_image(image: str, gpu_enabled: bool) -> str:
+    """Resolve the configured image to a concrete local tag."""
+    if image and image != AUTO_IMAGE:
+        return image
+    return DEFAULT_GPU_IMAGE if gpu_enabled else DEFAULT_CPU_IMAGE
 
 
 def load_config(path: Path) -> AutoDiscoveryConfig:

@@ -19,6 +19,7 @@ from surprisal.exploration import load_branch_sessions, save_branch_sessions
 from surprisal.fsm import select_next_state, FSMResponse
 from surprisal.models import AgentInvocation, Node, BeliefSample
 from surprisal.bayesian import compute_surprisal
+from surprisal.progress import ProgressCallback, emit_progress
 from surprisal.providers import LiteratureStatus, ProviderStatus
 from surprisal.workspace import get_experiment_dir
 
@@ -207,6 +208,7 @@ async def run_live_fsm(
     branch_path: list[Node],
     providers: ProviderStatus | None = None,
     literature_provider: LiteratureStatus | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> bool:
     """Run the full FSM for a single node with real agent calls.
 
@@ -347,6 +349,7 @@ async def run_live_fsm(
 
         state = next_state
         db.update_node(node_id, fsm_state=state)
+        emit_progress(progress_callback, f"Node {node_id}: starting stage `{state}`.")
 
         # ── Experiment Generator (Claude) ──
         if state == "experiment_generator":
@@ -458,6 +461,7 @@ async def run_live_fsm(
                 config=config.sandbox,
                 system_prompt_file=str(_prompts_dir() / "experiment_runner.md"),
                 session_id=runner_session_id,
+                progress_callback=progress_callback,
             )
             _remember_runner_session(result)
             _record_invocation(
@@ -841,5 +845,6 @@ async def run_live_fsm(
 
     # Mark as verified
     db.update_node(node_id, status="verified", virtual_loss=0)
+    emit_progress(progress_callback, f"Node {node_id}: verified.")
     node = db.get_node(node_id)
     return True

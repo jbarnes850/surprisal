@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, AsyncMock
 from surprisal.agents.backends import detect_gpu, create_backend
-from surprisal.config import SandboxConfig, CredentialsConfig
+from surprisal.config import DEFAULT_CPU_IMAGE, DEFAULT_GPU_IMAGE, SandboxConfig, CredentialsConfig
 
 
 @pytest.mark.asyncio
@@ -45,6 +45,7 @@ def test_create_backend_auto_with_gpu():
     backend = create_backend(config, creds, gpu_available=True)
     assert isinstance(backend, ExperimentContainer)
     assert backend.config.gpu is True
+    assert backend.config.image == DEFAULT_GPU_IMAGE
 
 
 def test_create_backend_auto_without_gpu():
@@ -54,3 +55,4 @@ def test_create_backend_auto_without_gpu():
     backend = create_backend(config, creds, gpu_available=False)
     assert isinstance(backend, ExperimentContainer)
     assert backend.config.gpu is False
+    assert backend.config.image == DEFAULT_CPU_IMAGE

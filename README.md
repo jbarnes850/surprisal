@@ -18,6 +18,12 @@ uv run surprisal status --tree
 uv run surprisal export --top 5 --format md
 ```
 
+On the first local CPU run, Surprisal will print a preflight message and build `surprisal-cpu:latest` once. Later runs reuse the cached image and stream stage-level progress through generator, runner, review, and belief phases.
+
+If your Claude CLI auth is subscription-backed rather than API-key-backed, run `claude setup-token` once and export `CLAUDE_CODE_OAUTH_TOKEN` before local container runs so the runner can authenticate inside Docker.
+
+Codex-based analysis and review stages run from per-experiment workspaces under `/tmp/.../experiments/node_*`, so the CLI invocation explicitly skips git-repo enforcement there.
+
 ## What it does
 
 Each expansion runs a per-node FSM:
@@ -112,7 +118,7 @@ Live config knobs:
 | `agents.revision_attempts` | `1` | Total plan revisions after rejection |
 | `agents.generator_timeout` | `180` | Generator timeout in seconds |
 | `sandbox.backend` | `auto` | `auto`, `local`, or `hf_jobs` (`local` is the canonical research-grade path) |
-| `sandbox.image` | `surprisal-gpu:latest` | Local sandbox image |
+| `sandbox.image` | `auto` | Local sandbox image tag (`surprisal-cpu:latest` on CPU hosts, `surprisal-gpu:latest` on Linux+NVIDIA hosts) |
 | `sandbox.gpu` | `true` | Enable GPU passthrough for the local sandbox |
 | `sandbox.memory_limit` | `16g` | Local sandbox memory limit |
 | `sandbox.cpu_limit` | `4` | Local sandbox CPU limit |

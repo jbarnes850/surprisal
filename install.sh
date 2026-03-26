@@ -71,24 +71,34 @@ fi
 echo ""
 echo "--- GPU Detection ---"
 GPU=false
+HOST_OS="$(uname -s)"
 if nvidia-smi &>/dev/null; then
     GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
     echo "GPU detected: $GPU_NAME"
     GPU=true
 else
-    echo "No GPU detected — stats-only mode (use HF Jobs for cloud GPU)"
+    echo "No local NVIDIA GPU detected on $HOST_OS — CPU sandbox mode (use HF Jobs or remote GPU for scale-out)"
 fi
 
-# 8. Build sandbox image
+# 8. Select sandbox image (built lazily on first run)
 echo ""
-echo "--- Building Sandbox Image ---"
+echo "--- Sandbox Image Selection ---"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/sandbox/Dockerfile.gpu" ]; then
-    echo "Building surprisal-gpu image (this may take a few minutes)..."
-    docker build -t surprisal-gpu:latest -f "$SCRIPT_DIR/sandbox/Dockerfile.gpu" "$SCRIPT_DIR/sandbox/"
+SANDBOX_IMAGE="surprisal-cpu:latest"
+if [ "$GPU" = true ]; then
+    SANDBOX_IMAGE="surprisal-gpu:latest"
+fi
+echo "Selected image: $SANDBOX_IMAGE"
+if docker image inspect "$SANDBOX_IMAGE" >/dev/null 2>&1; then
+    echo "Image already present locally."
 else
-    echo "Dockerfile.gpu not found — skipping image build"
-    echo "Build later: docker build -t surprisal-gpu:latest -f sandbox/Dockerfile.gpu sandbox/"
+    echo "Image not built yet — it will be built automatically on the first local run."
+    echo "Optional prebuild:"
+    if [ "$GPU" = true ]; then
+        echo "  docker build -t surprisal-gpu:latest -f sandbox/Dockerfile.gpu sandbox/"
+    else
+        echo "  docker build -t surprisal-cpu:latest -f sandbox/Dockerfile.cpu sandbox/"
+    fi
 fi
 
 # 9. Credentials (optional)
@@ -115,6 +125,7 @@ mkdir -p "$CONFIG_DIR"
 cat > "$CONFIG_DIR/config.toml" << EOF
 [sandbox]
 backend = "auto"
+image = "auto"
 gpu = $GPU
 
 [credentials]

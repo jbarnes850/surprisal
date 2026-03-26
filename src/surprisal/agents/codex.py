@@ -49,6 +49,7 @@ class CodexAgent:
         else:
             cmd = ["codex", "exec", "--full-auto", "-c", f'model="{self.model}"']
         cmd.append("--json")
+        cmd.append("--skip-git-repo-check")
         if output_file:
             cmd.extend(["-o", output_file])
         if output_schema_file:

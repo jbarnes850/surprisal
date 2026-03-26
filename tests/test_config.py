@@ -1,5 +1,13 @@
 import pytest
-from surprisal.config import AutoDiscoveryConfig, load_config, save_config
+from surprisal.config import (
+    AUTO_IMAGE,
+    AutoDiscoveryConfig,
+    DEFAULT_CPU_IMAGE,
+    DEFAULT_GPU_IMAGE,
+    load_config,
+    resolve_sandbox_image,
+    save_config,
+)
 
 
 def test_default_config_has_expected_values():
@@ -61,7 +69,7 @@ def test_config_set_invalid_key_raises():
 def test_sandbox_config_new_defaults():
     cfg = AutoDiscoveryConfig()
     assert cfg.sandbox.backend == "auto"
-    assert cfg.sandbox.image == "surprisal-gpu:latest"
+    assert cfg.sandbox.image == AUTO_IMAGE
     assert cfg.sandbox.gpu is True
     assert cfg.sandbox.memory_limit == "16g"
     assert cfg.sandbox.cpu_limit == "4"
@@ -115,3 +123,15 @@ def test_config_set_sandbox_gpu():
     cfg = AutoDiscoveryConfig()
     cfg.set("sandbox.gpu", "false")
     assert cfg.sandbox.gpu is False
+
+
+def test_resolve_sandbox_image_auto_cpu():
+    assert resolve_sandbox_image(AUTO_IMAGE, gpu_enabled=False) == DEFAULT_CPU_IMAGE
+
+
+def test_resolve_sandbox_image_auto_gpu():
+    assert resolve_sandbox_image(AUTO_IMAGE, gpu_enabled=True) == DEFAULT_GPU_IMAGE
+
+
+def test_resolve_sandbox_image_explicit():
+    assert resolve_sandbox_image("custom-image:latest", gpu_enabled=False) == "custom-image:latest"

@@ -124,6 +124,7 @@ def _run_explore_command(
         _emit_error("Claude CLI is required. Run 'claude auth login' first.", as_json=as_json, extra=extra)
 
     literature = asyncio.run(detect_literature_provider())
+    progress_callback = None
     if not as_json:
         if providers.both_available:
             click.echo("Providers: Claude + Codex detected.")
@@ -134,11 +135,15 @@ def _run_explore_command(
             + (" (semantic search)" if literature.has_semantic_search else " (public API)")
         )
 
+        def progress_callback(message: str) -> None:
+            click.echo(f"Progress: {message}")
+
     result = asyncio.run(run_exploration(
         db=db, exploration_dir=exp_dir, budget=budget,
         concurrency=concurrency, c_explore=c_explore,
         config=cfg, root_id=root[0], domain=exp.domain,
         providers=providers, literature_provider=literature,
+        progress_callback=progress_callback,
     ))
     db.close()
 

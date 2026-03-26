@@ -6,6 +6,7 @@ from pathlib import Path
 from surprisal.agents.base import AgentResult
 from surprisal.agents.claude import ClaudeAgent
 from surprisal.config import SandboxConfig, CredentialsConfig
+from surprisal.progress import ProgressCallback, emit_progress
 
 logger = logging.getLogger("surprisal")
 
@@ -36,9 +37,11 @@ class HFJobsSandbox:
         config: SandboxConfig,
         system_prompt_file: str | None = None,
         session_id: str | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> AgentResult:
         model = "opus"
         agent = ClaudeAgent(model=model, max_turns=3)
+        emit_progress(progress_callback, "Runner: generating remote HF Jobs script.")
         script_result = await agent.invoke(
             prompt=(
                 f"Write a self-contained Python script for:\n{experiment_prompt}\n\n"
@@ -75,6 +78,7 @@ class HFJobsSandbox:
             timeout=self.config.hf_timeout,
         )
         logger.info(f"HF Job submitted: {job.id}")
+        emit_progress(progress_callback, f"Runner: submitted HF Job `{job.id}`.")
 
         while True:
             info = inspect_job(job_id=job.id)
@@ -86,6 +90,7 @@ class HFJobsSandbox:
         raw = "\n".join(str(log) for log in logs)
         exit_code = 0 if info.status.stage == "COMPLETED" else 1
         logger.info(f"HF Job {job.id} finished: {info.status.stage}")
+        emit_progress(progress_callback, f"Runner: HF Job `{job.id}` finished with status {info.status.stage}.")
         return AgentResult.from_raw(
             raw,
             exit_code=exit_code,
