@@ -22,6 +22,7 @@ class ClaudeAgent:
         json_schema: Optional[dict] = None,
         cwd: Optional[str] = None,
         no_tools: bool = False,
+        extra_args: list[str] = None,
     ) -> list[str]:
         cmd = ["claude", "-p", prompt]
         cmd.extend(["--output-format", output_format])
@@ -42,6 +43,8 @@ class ClaudeAgent:
             cmd.extend(["--session-id", session_id])
         if json_schema:
             cmd.extend(["--json-schema", json.dumps(json_schema)])
+        if extra_args:
+            cmd.extend(extra_args)
         return cmd
 
     async def invoke(
@@ -56,6 +59,7 @@ class ClaudeAgent:
         cwd: Optional[str] = None,
         timeout: int = 600,
         no_tools: bool = False,
+        extra_args: list[str] = None,
     ) -> AgentResult:
         cmd = self.build_command(
             prompt=prompt,
@@ -66,6 +70,7 @@ class ClaudeAgent:
             fork_session=fork_session,
             json_schema=json_schema,
             no_tools=no_tools,
+            extra_args=extra_args,
         )
         import os
         env = os.environ.copy()

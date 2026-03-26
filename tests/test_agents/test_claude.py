@@ -67,3 +67,21 @@ def test_fork_without_resume_is_ignored():
     agent = ClaudeAgent(model="opus", max_turns=20)
     cmd = agent.build_command(prompt="test", fork_session=True)  # no resume_session
     assert "--fork-session" not in cmd
+
+
+def test_claude_agent_builds_command_with_extra_args():
+    agent = ClaudeAgent(model="opus", max_turns=20)
+    cmd = agent.build_command(
+        prompt="test",
+        extra_args=["--mcp-config", "/tmp/mcp.json"],
+    )
+    assert "--mcp-config" in cmd
+    assert "/tmp/mcp.json" in cmd
+
+
+def test_extra_args_none_does_not_add_flags():
+    agent = ClaudeAgent(model="opus", max_turns=20)
+    cmd = agent.build_command(prompt="test")
+    base_len = len(cmd)
+    cmd2 = agent.build_command(prompt="test", extra_args=None)
+    assert len(cmd2) == base_len
