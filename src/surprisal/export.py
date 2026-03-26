@@ -25,6 +25,7 @@ def export_json(db: Database, top: int = None, min_surprisal: float = None) -> d
                 "posterior_beta": n.posterior_beta,
                 "k_prior": n.k_prior,
                 "k_post": n.k_post,
+                "cited_papers": n.cited_papers,
                 "status": n.status,
             }
             for n in nodes
@@ -56,6 +57,15 @@ def export_markdown(db: Database, top: int = None, min_surprisal: float = None) 
         lines.append(f"- **Bayesian Surprise:** {bs}")
         lines.append(f"- **Belief Shifted:** {n.belief_shifted}")
         lines.append(f"- **Depth:** {n.depth}")
+        if n.cited_papers:
+            try:
+                papers = json.loads(n.cited_papers)
+                if papers:
+                    lines.append("- **Grounded in:**")
+                    for p in papers:
+                        lines.append(f"  - [{p.get('arxiv_id', '?')}] \"{p.get('title', '?')}\" -- Gap: {p.get('gap', '?')}")
+            except (json.JSONDecodeError, TypeError):
+                pass
         if n.context:
             lines.append(f"- **Context:** {n.context}")
         lines.append("")

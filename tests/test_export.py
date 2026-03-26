@@ -67,3 +67,27 @@ def test_export_training_data(tmp_db):
     assert "hypothesis" in first
     assert "surprisal" in first
     assert first["surprisal"] in (0, 1)
+
+
+def test_export_json_includes_cited_papers(tmp_db):
+    papers = json.dumps([{"arxiv_id": "2602.07670", "title": "Test Paper", "gap": "gap"}])
+    tmp_db.insert_node(Node(
+        id="n_lit", exploration_id="e", hypothesis="Literature-grounded hypothesis",
+        status="verified", bayesian_surprise=5.0, belief_shifted=True,
+        depth=1, cited_papers=papers,
+    ))
+    result = export_json(tmp_db)
+    hyp = result["hypotheses"][0]
+    assert "cited_papers" in hyp
+
+
+def test_export_markdown_includes_citations(tmp_db):
+    papers = json.dumps([{"arxiv_id": "2602.07670", "title": "Test Paper", "gap": "untested"}])
+    tmp_db.insert_node(Node(
+        id="n_lit2", exploration_id="e", hypothesis="h",
+        status="verified", bayesian_surprise=3.0, belief_shifted=True,
+        depth=1, cited_papers=papers,
+    ))
+    md = export_markdown(tmp_db)
+    assert "2602.07670" in md
+    assert "Test Paper" in md
