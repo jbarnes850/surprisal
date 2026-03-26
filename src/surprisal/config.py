@@ -33,10 +33,21 @@ class AgentsConfig:
 
 @dataclass
 class SandboxConfig:
-    memory_limit: str = "2g"
-    cpu_limit: str = "1.5"
-    timeout: int = 600
-    network: bool = False
+    backend: str = "auto"
+    image: str = "surprisal-gpu:latest"
+    gpu: bool = True
+    memory_limit: str = "16g"
+    cpu_limit: str = "4"
+    timeout: int = 1800
+    network: bool = True
+    hf_flavor: str = "a10g-small"
+    hf_timeout: str = "2h"
+
+
+@dataclass
+class CredentialsConfig:
+    wandb_api_key: str = ""
+    hf_token: str = ""
 
 
 @dataclass
@@ -54,6 +65,7 @@ class AutoDiscoveryConfig:
     agents: AgentsConfig = field(default_factory=AgentsConfig)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     predictor: PredictorConfig = field(default_factory=PredictorConfig)
+    credentials: CredentialsConfig = field(default_factory=CredentialsConfig)
 
     def set(self, key: str, value: str) -> None:
         section_name, _, field_name = key.partition(".")
@@ -81,7 +93,7 @@ def load_config(path: Path) -> AutoDiscoveryConfig:
         return cfg
     with open(path, "rb") as f:
         data = tomllib.load(f)
-    for section_name in ("general", "mcts", "agents", "sandbox", "predictor"):
+    for section_name in ("general", "mcts", "agents", "sandbox", "predictor", "credentials"):
         if section_name in data:
             section = getattr(cfg, section_name)
             for k, v in data[section_name].items():
@@ -92,7 +104,7 @@ def load_config(path: Path) -> AutoDiscoveryConfig:
 
 def save_config(cfg: AutoDiscoveryConfig, path: Path) -> None:
     lines = []
-    for section_name in ("general", "mcts", "agents", "sandbox", "predictor"):
+    for section_name in ("general", "mcts", "agents", "sandbox", "predictor", "credentials"):
         section = getattr(cfg, section_name)
         lines.append(f"[{section_name}]")
         for f in fields(section):

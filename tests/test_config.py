@@ -19,10 +19,10 @@ def test_default_config_has_expected_values():
     assert cfg.agents.max_turns == 20
     assert cfg.agents.code_attempts == 6
     assert cfg.agents.revision_attempts == 1
-    assert cfg.sandbox.memory_limit == "2g"
-    assert cfg.sandbox.cpu_limit == "1.5"
-    assert cfg.sandbox.timeout == 600
-    assert cfg.sandbox.network is False
+    assert cfg.sandbox.memory_limit == "16g"
+    assert cfg.sandbox.cpu_limit == "4"
+    assert cfg.sandbox.timeout == 1800
+    assert cfg.sandbox.network is True
     assert cfg.predictor.enabled is False
 
 
@@ -56,3 +56,45 @@ def test_config_set_invalid_key_raises():
     cfg = AutoDiscoveryConfig()
     with pytest.raises(KeyError):
         cfg.set("nonexistent.key", "value")
+
+
+def test_sandbox_config_new_defaults():
+    cfg = AutoDiscoveryConfig()
+    assert cfg.sandbox.backend == "auto"
+    assert cfg.sandbox.image == "surprisal-gpu:latest"
+    assert cfg.sandbox.gpu is True
+    assert cfg.sandbox.memory_limit == "16g"
+    assert cfg.sandbox.cpu_limit == "4"
+    assert cfg.sandbox.timeout == 1800
+    assert cfg.sandbox.network is True
+    assert cfg.sandbox.hf_flavor == "a10g-small"
+    assert cfg.sandbox.hf_timeout == "2h"
+
+
+def test_credentials_config_defaults():
+    cfg = AutoDiscoveryConfig()
+    assert cfg.credentials.wandb_api_key == ""
+    assert cfg.credentials.hf_token == ""
+
+
+def test_credentials_config_round_trip(tmp_path):
+    cfg = AutoDiscoveryConfig()
+    cfg.credentials.wandb_api_key = "test-key-123"
+    cfg.credentials.hf_token = "hf_test_456"
+    path = tmp_path / "config.toml"
+    save_config(cfg, path)
+    loaded = load_config(path)
+    assert loaded.credentials.wandb_api_key == "test-key-123"
+    assert loaded.credentials.hf_token == "hf_test_456"
+
+
+def test_config_set_credentials():
+    cfg = AutoDiscoveryConfig()
+    cfg.set("credentials.wandb_api_key", "my-key")
+    assert cfg.credentials.wandb_api_key == "my-key"
+
+
+def test_config_set_sandbox_gpu():
+    cfg = AutoDiscoveryConfig()
+    cfg.set("sandbox.gpu", "false")
+    assert cfg.sandbox.gpu is False
