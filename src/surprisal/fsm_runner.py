@@ -176,17 +176,21 @@ async def run_live_fsm(
                     gen_extra_args = ["--mcp-config", str(claude_json)]
 
             # Build literature search instructions (conditional on provider)
+            from datetime import date
+            today = date.today().isoformat()
             lit_instructions = (
-                "STEP 1: Search for 2-3 papers related to this branch's topic.\n"
+                "STEP 1: Search for 2-3 RECENT papers (2024-2026) related to this branch's topic.\n"
+                "  Prioritize papers from the last 6 months. Older foundational works are OK as secondary references.\n"
                 "STEP 2: Read their limitations or open problems.\n"
                 "STEP 3: Identify a specific gap to test.\n"
                 "STEP 4: Propose a hypothesis targeting that gap.\n"
             )
             if not (literature_provider and literature_provider.has_semantic_search):
                 lit_instructions += (
-                    "\nTo find papers, use WebFetch:\n"
-                    "- Search: fetch https://huggingface.co/api/daily_papers to find recent papers\n"
-                    "- Read: fetch https://huggingface.co/papers/{arxiv_id}.md for full content\n"
+                    f"\nTo find papers, use WebFetch:\n"
+                    f"- Recent papers: fetch https://huggingface.co/api/daily_papers?date={today}\n"
+                    f"- Search by topic: fetch https://huggingface.co/api/daily_papers to browse recent work\n"
+                    "- Read a paper: fetch https://huggingface.co/papers/{{arxiv_id}}.md for full content\n"
                 )
 
             prompt = (
