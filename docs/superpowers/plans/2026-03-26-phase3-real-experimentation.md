@@ -316,19 +316,21 @@ from surprisal.agents.backends import detect_gpu, create_backend
 from surprisal.config import SandboxConfig, CredentialsConfig
 
 
-def test_detect_gpu_with_nvidia_smi():
+@pytest.mark.asyncio
+async def test_detect_gpu_with_nvidia_smi():
     with patch("asyncio.create_subprocess_exec") as mock_exec:
         mock_proc = AsyncMock()
         mock_proc.communicate.return_value = (b"GPU 0: NVIDIA GB10\n", b"")
         mock_proc.returncode = 0
         mock_exec.return_value = mock_proc
-        result = asyncio.get_event_loop().run_until_complete(detect_gpu())
+        result = await detect_gpu()
         assert result is True
 
 
-def test_detect_gpu_without_nvidia_smi():
+@pytest.mark.asyncio
+async def test_detect_gpu_without_nvidia_smi():
     with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError):
-        result = asyncio.get_event_loop().run_until_complete(detect_gpu())
+        result = await detect_gpu()
         assert result is False
 
 
@@ -352,8 +354,7 @@ def test_create_backend_auto_with_gpu():
     from surprisal.agents.experiment_container import ExperimentContainer
     config = SandboxConfig(backend="auto")
     creds = CredentialsConfig()
-    with patch("surprisal.agents.backends.detect_gpu", return_value=asyncio.coroutine(lambda: True)()):
-        backend = create_backend(config, creds, gpu_available=True)
+    backend = create_backend(config, creds, gpu_available=True)
     assert isinstance(backend, ExperimentContainer)
     assert backend.config.gpu is True
 
@@ -778,11 +779,8 @@ class HFJobsSandbox:
         experiment_prompt: str,
         workspace: Path,
         config: SandboxConfig,
-        agents_config=None,
     ) -> AgentResult:
         model = "opus"
-        if agents_config:
-            model = agents_config.claude_model
 
         # 1. Agent generates self-contained script
         agent = ClaudeAgent(model=model, max_turns=3)
@@ -1221,9 +1219,18 @@ This is the largest change — merging the `experiment_programmer` and `code_exe
 
 - [ ] **Step 1: Update imports and function signature**
 
-In `src/surprisal/fsm_runner.py`, update the imports (lines 10-20):
+In `src/surprisal/fsm_runner.py`:
 
-Replace:
+First, update the module docstring (lines 1-5) to:
+```python
+"""Live FSM execution — calls real Claude/Codex/Docker agents.
+
+This module implements the full discovery agent pipeline for a single MCTS node:
+  experiment_generator → runner → analyst → reviewer → hypothesis → belief
+"""
+```
+
+Then update the imports (lines 10-20). Replace:
 ```python
 from surprisal.agents.docker import DockerSandbox
 ```
@@ -1236,7 +1243,13 @@ from surprisal.mcp_config import write_mcp_config
 
 - [ ] **Step 2: Update run_live_fsm to remove DockerSandbox creation**
 
-In `run_live_fsm()`, remove lines 128-133 (the `sandbox = DockerSandbox(...)` block).
+In `run_live_fsm()`, remove lines 128-133 (the `sandbox = DockerSandbox(...)` block). Replace with GPU auto-detection (runs once per FSM execution):
+
+```python
+    # Auto-detect GPU for backend selection
+    from surprisal.agents.backends import detect_gpu
+    _gpu_available = await detect_gpu() if config.sandbox.backend == "auto" else None
+```
 
 - [ ] **Step 3: Replace experiment_programmer + code_executor blocks with experiment_runner**
 
@@ -1261,7 +1274,7 @@ Replace the `experiment_programmer` block (lines 241-282) AND the `code_executor
             )
             sys_prompt = str(_prompts_dir() / "experiment_runner.md")
 
-            backend = create_backend(config.sandbox, config.credentials)
+            backend = create_backend(config.sandbox, config.credentials, gpu_available=_gpu_available)
             result = await backend.execute(
                 experiment_prompt=runner_prompt,
                 workspace=exp_dir,
