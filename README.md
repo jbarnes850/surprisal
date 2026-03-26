@@ -1,199 +1,153 @@
-<p align="center">
-  <img src="public/banner.jpg" alt="Surprisal: open-ended scientific discovery via Bayesian surprise" width="100%">
-</p>
+# Surprisal
 
-<p align="center">
-  <a href="https://github.com/jbarnes850/surprisal/actions"><img src="https://img.shields.io/github/actions/workflow/status/jbarnes850/surprisal/ci.yml?branch=main&style=flat-square" alt="CI"></a>
-  <a href="https://github.com/jbarnes850/surprisal/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square" alt="Python 3.12+"></a>
-  <a href="https://arxiv.org/abs/2602.07670"><img src="https://img.shields.io/badge/arXiv-2602.07670-b31b1b?style=flat-square" alt="arXiv"></a>
-</p>
+MCTS with Bayesian surprise for open-ended scientific discovery.
 
-Describe what you're curious about. Get back ranked scientific discoveries.
-
-Surprisal takes a research question in plain English, autonomously generates hypotheses grounded in recent literature, writes and executes experiments on real data and models, and ranks discoveries by how much they shift the model's own beliefs.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jbarnes850/surprisal/main/install.sh | bash
-surprisal init --domain "neural scaling laws" --seed "your hypothesis here"
-surprisal explore --budget 20
-surprisal export --top 5
-```
+Surprisal is inspired by AllenAI's [AutoDiscovery](https://github.com/allenai/autodiscovery) and the Surprisal-Guided Selection paper cited below. It explores a research domain by generating literature-grounded hypotheses, running bounded experiments in a sandbox with real tools and network access, and ranking branches by how much the evidence changes the model's beliefs.
 
 ## Quick start
 
-**One-line install** (handles dependencies, GPU detection, Docker image, and credentials):
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jbarnes850/surprisal/main/install.sh | bash
-```
 
-Or manually:
-
-```bash
-git clone https://github.com/jbarnes850/surprisal && cd surprisal
-uv sync
-
-# Build the GPU-enabled sandbox image
-docker build -t surprisal-gpu:latest -f sandbox/Dockerfile.gpu sandbox/
-
-# Initialize an exploration
 uv run surprisal init \
   --domain "AI for scientific discovery" \
-  --seed "LLM self-evaluation accuracy correlates inversely with task compositional depth"
+  --seed "LLM self-evaluation accuracy drops as task compositional depth increases"
 
-# Run MCTS exploration (budget = number of hypothesis nodes to expand)
 uv run surprisal explore --budget 10 --concurrency 1
-
-# Check the hypothesis tree
 uv run surprisal status --tree
-
-# Export ranked discoveries
 uv run surprisal export --top 5 --format md
 ```
 
-## Example
+## What it does
 
-```bash
-uv run surprisal init \
-  --domain "neural scaling laws across modalities" \
-  --seed "Vision transformer scaling exponents differ from language model scaling exponents on equivalent compute budgets"
+Each expansion runs a per-node FSM:
 
-uv run surprisal explore --budget 20 --concurrency 2
+1. `experiment_generator`: Claude searches recent literature and proposes one hypothesis plus one executable plan.
+2. `experiment_runner`: a sandbox backend executes the plan with Python, Bash, local files, public network access, HuggingFace resources, and optional W&B logging.
+3. `experiment_analyst`: Codex or Claude reviews the execution for fidelity and validity.
+4. `experiment_reviewer`: Codex or Claude decides whether the evidence is usable.
+5. `experiment_reviser`: if needed, the plan is revised and retried within configured bounds.
+6. `hypothesis_generator`: Claude formalizes the post-experiment hypothesis record.
+7. `belief_elicitation`: Claude samples prior and posterior binary judgments and Surprisal computes Bayesian surprise.
 
-uv run surprisal status --tree
-# Exploration: a3f7e2 (neural scaling laws across modalities)
-# Nodes: 21 total, 18 verified, 0 expanding, 3 failed
-# Surprisals: 4 found (22.2% rate)
-# Tree depth: max 5
-#
-#  [0] (verified) Vision transformer scaling exponents differ from language...
-#    [1] (verified) Log-linear fits to simulated ViT loss curves show steeper... BS=2.31 SHIFTED!
-#      [2] (verified) The scaling exponent gap widens when attention head count...
-#      [2] (verified) Cross-modal transfer learning efficiency follows a power... BS=1.87 SHIFTED!
-#    [1] (verified) Compute-optimal model size ratios (Chinchilla) transfer...
+The deterministic MCTS layer never calls LLMs directly. It only consumes node state and reward signals.
 
-uv run surprisal export --top 3 --format json | jq '.hypotheses[].hypothesis'
-# "Log-linear fits to simulated ViT loss curves show steeper scaling exponents..."
-# "Cross-modal transfer learning efficiency follows a power law..."
-# "Attention head scaling exhibits phase transitions at critical compute thresholds..."
-```
+## Runtime model
 
-The system generated 20 hypotheses, ran experiments in GPU-accelerated containers, and identified 4 where the experimental evidence genuinely surprised the model. These are the discoveries worth investigating further.
-
-## How it works
-
-Each MCTS iteration:
-
-1. **Selection.** UCT picks the most promising branch to explore.
-2. **Literature search.** The generator searches recent papers (via alphaxiv or HuggingFace Papers API) to identify gaps and ground new hypotheses in the literature.
-3. **Experiment design.** Claude proposes a hypothesis and experiment plan, citing the papers that motivated it.
-4. **Execution.** An agent runs inside a GPU-enabled Docker container, writing and executing code against real HuggingFace datasets or synthetic data. The agent self-debugs failures and logs metrics to W&B if configured.
-5. **Analysis and review.** A separate agent analyzes the output, comparing against prior W&B runs where available. A reviewer validates the results.
-6. **Belief elicitation.** The model is asked "is this hypothesis true?" before and after seeing evidence (n=30 samples each).
-7. **Bayesian surprise.** KL divergence between prior and posterior Beta distributions measures belief shift.
-8. **Backpropagation.** Surprisal scores flow up the tree, guiding future exploration toward high-information regions.
-
-The system optimizes for **variance**: it seeks hypotheses where the model genuinely does not know what to expect, following Shi & Evans (2023) on the relationship between surprising research combinations and scientific impact.
+- Claude is required for research-facing roles: generator, hypothesis formalization, and belief elicitation.
+- If Codex is available, it handles analysis, review, and revision roles.
+- If Codex is not available, Claude handles all roles.
+- Agent sessions persist per branch in `sessions.json`: Claude research sessions, code-analysis sessions, and runner sessions are tracked separately and resumed automatically across nodes on the same branch.
+- Belief elicitation forks from the persisted research session instead of mutating it, so prior and posterior samples stay independent while still inheriting branch context.
+- Experiment execution uses the configured sandbox backend:
+  - `local`: Docker-based local sandbox with the full runner contract
+  - `hf_jobs`: one-shot Hugging Face Jobs execution path for batch runs
+  - `auto`: local backend with GPU autodetection
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `surprisal init` | Create a new exploration |
-| `surprisal explore` | Run MCTS exploration |
-| `surprisal status` | Show tree state and hypothesis tree |
-| `surprisal export` | Export ranked hypotheses (JSON, CSV, markdown, training data) |
-| `surprisal prune` | Remove low-value branches (`--dry-run` supported) |
-| `surprisal config` | Manage settings |
-| `surprisal resume` | Resume a branch or exploration |
+| Command | Purpose | Machine-readable output |
+| --- | --- | --- |
+| `surprisal init` | Create or reuse an exploration for a domain | `--json` |
+| `surprisal explore` | Run exploration on the latest or a specific exploration | `--json` |
+| `surprisal status` | Show exploration summary and optional tree | `--json` |
+| `surprisal export` | Export results as markdown, CSV, JSON, or JSONL training data | `--format json` or `--json` |
+| `surprisal resume` | Alias for `explore` against the latest or a specific exploration | `--json` |
+| `surprisal prune` | Mark low-value branches as pruned | `--json` |
+| `surprisal config` | Show, set, or reset config | `--json` |
 
-All commands accept `--json` for machine-readable output. All commands are idempotent.
+`resume` resumes an exploration, not a per-agent conversational session.
 
 ## Architecture
 
-```
-MCTS Engine (deterministic Python, never calls LLMs directly)
-    |
-    +-- Persistence (SQLite WAL + filesystem workspaces)
-    |
-    +-- Backend Abstraction (SandboxBackend protocol)
-    |    +-- LocalGPUContainer (default: Claude agent runs inside Docker with GPU)
-    |    +-- HF Jobs (cloud scale-out for training beyond local GPU)
-    |
-    +-- Agent Dispatcher
-    |    +-- Claude Opus: hypothesis generation, literature search, belief elicitation
-    |    +-- Codex or Claude Sonnet: experiment analysis, review, revision
-    |    +-- Claude (inside container): experiment execution with self-debugging
-    |
-    +-- MCP Tools (injected into containers at runtime)
-         +-- W&B (experiment tracking and run comparison)
-         +-- HuggingFace (dataset access, model hub)
-         +-- alphaxiv (semantic paper search)
-```
+Three layers:
 
-**Discovery agent FSM (per hypothesis node):**
-```
-generator (Opus) -> runner (agent inside container) -> analyst (Codex/Sonnet) -> reviewer (Codex/Sonnet)
-                                                                                    |
-                                                                         [reject] reviser (Codex/Sonnet) -> runner (retry, up to 6x)
-                                                                         [approve] hypothesis_generator (Opus) -> belief_elicitation (Opus, x60)
-```
+1. `src/surprisal/mcts.py`
+   Deterministic tree policy, UCT scoring, progressive widening, and backpropagation.
+2. `src/surprisal/db.py`, `src/surprisal/exploration.py`, `src/surprisal/workspace.py`
+   SQLite WAL persistence plus per-branch workspaces.
+3. `src/surprisal/orchestrator.py`, `src/surprisal/fsm_runner.py`
+   Async worker orchestration and the multi-agent experiment FSM.
 
-## Key concepts
+Key files:
 
-- **Bayesian surprise.** D_KL(posterior || prior), measuring how much experimental evidence shifts the model's beliefs about a hypothesis.
-- **Belief shift.** Whether the expected belief crosses the 0.5 decision boundary. The model changed its mind from "likely true" to "likely false" or vice versa.
-- **Progressive widening.** Tree breadth grows as sqrt(visits), preventing premature width while allowing exploration to broaden over time.
-- **Virtual loss.** Parallel workers avoid selecting the same branch simultaneously via temporary visit count inflation.
-- **Literature grounding.** Every hypothesis cites the recent papers that motivated it. The generator searches alphaxiv (semantic search) or HuggingFace Papers API (public fallback) for 2024-2026 work.
-- **Agent-in-container execution.** The experiment runner operates inside a GPU-enabled Docker container with full tool access: Bash, file I/O, MCP tools for W&B and HuggingFace. It writes code, executes it, and self-debugs failures before returning results.
-
-## Requirements
-
-- Python 3.12+
-- [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) authenticated (`claude auth login`)
-- Docker with [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (for GPU experiments)
-- [`uv`](https://docs.astral.sh/uv/) package manager
-
-Optional:
-
-- [Codex CLI](https://github.com/openai/codex) for heterogeneous agent mode (Codex handles analysis/review, Claude handles research/belief)
-- [W&B](https://wandb.ai/) account for experiment tracking
-- [HuggingFace](https://huggingface.co/) token for dataset access and HF Jobs cloud GPU
-- [alphaxiv MCP](https://www.alphaxiv.org/docs/mcp) for semantic paper search
+- `src/surprisal/fsm_runner.py`: per-node live FSM
+- `src/surprisal/orchestrator.py`: worker pool, selection, branching, and dedup scheduling
+- `src/surprisal/bayesian.py`: Beta posterior updates and belief-shift scoring
+- `src/surprisal/prompts/`: prompt contracts for generator, runner, analyst, reviewer, reviser, and belief stages
 
 ## Configuration
 
+Exploration state defaults to `~/.surprisal`.
+
+Config is loaded from:
+
+- `${SURPRISAL_HOME}/config.toml` when `SURPRISAL_HOME` is set
+- `~/.surprisal/config.toml` when that file exists
+- otherwise `${XDG_CONFIG_HOME:-~/.config}/surprisal/config.toml`
+
+Show the active config:
+
 ```bash
 uv run surprisal config --show
-uv run surprisal config --set mcts.c_explore 2.0         # more exploration
-uv run surprisal config --set mcts.belief_samples 30      # production (60 calls/node)
-uv run surprisal config --set agents.claude_model opus    # use Opus for research
-uv run surprisal config --set sandbox.gpu true            # enable GPU passthrough
-uv run surprisal config --set credentials.wandb_api_key YOUR_KEY
-uv run surprisal config --set credentials.hf_token YOUR_TOKEN
 ```
 
+Live config knobs:
+
 | Setting | Default | Description |
-|---------|---------|-------------|
-| `mcts.c_explore` | 1.414 | UCT exploration constant (higher = more exploration) |
-| `mcts.belief_samples` | 30 | Samples per belief phase (total = 2x this per node) |
-| `mcts.max_depth` | 30 | Maximum hypothesis tree depth |
-| `mcts.dedup_interval` | 50 | Run deduplication every N nodes |
-| `agents.claude_model` | opus | Model for Claude roles |
-| `sandbox.backend` | auto | Experiment backend: `auto`, `local`, or `hf_jobs` |
-| `sandbox.gpu` | true | Enable GPU passthrough for local container |
-| `sandbox.timeout` | 1800 | Container execution timeout (seconds) |
-| `sandbox.hf_flavor` | a10g-small | HF Jobs GPU flavor (when using cloud backend) |
-| `credentials.wandb_api_key` | | W&B API key for experiment tracking |
-| `credentials.hf_token` | | HuggingFace token for datasets and HF Jobs |
+| --- | --- | --- |
+| `general.default_budget` | `100` | Default exploration budget |
+| `general.default_concurrency` | `2` | Default worker count |
+| `mcts.c_explore` | `1.414` | UCT exploration constant |
+| `mcts.k_progressive` | `1.0` | Progressive widening coefficient |
+| `mcts.alpha_progressive` | `0.5` | Progressive widening exponent |
+| `mcts.max_depth` | `30` | Maximum tree depth |
+| `mcts.belief_samples` | `30` | Samples per prior and posterior belief phase |
+| `mcts.virtual_loss` | `2` | Virtual loss applied during parallel selection |
+| `mcts.dedup_interval` | `50` | Run deduplication every N completed expansions |
+| `agents.claude_model` | `opus` | Claude model for research roles |
+| `agents.codex_model` | `gpt-5.4` | Codex model for analysis, review, and revision roles |
+| `agents.max_turns` | `20` | Max Claude turns per invocation |
+| `agents.code_attempts` | `6` | Total runner attempts before failure |
+| `agents.revision_attempts` | `1` | Total plan revisions after rejection |
+| `agents.generator_timeout` | `180` | Generator timeout in seconds |
+| `sandbox.backend` | `auto` | `auto`, `local`, or `hf_jobs` (`local` is the canonical research-grade path) |
+| `sandbox.image` | `surprisal-gpu:latest` | Local sandbox image |
+| `sandbox.gpu` | `true` | Enable GPU passthrough for the local sandbox |
+| `sandbox.memory_limit` | `16g` | Local sandbox memory limit |
+| `sandbox.cpu_limit` | `4` | Local sandbox CPU limit |
+| `sandbox.timeout` | `1800` | Sandbox timeout in seconds |
+| `sandbox.network` | `true` | Allow public network access in the sandbox |
+| `sandbox.hf_flavor` | `a10g-small` | HF Jobs hardware flavor |
+| `sandbox.hf_timeout` | `2h` | HF Jobs timeout |
+| `credentials.wandb_api_key` | `""` | Optional W&B API key |
+| `credentials.hf_token` | `""` | Optional HuggingFace token |
+
+## Literature grounding
+
+The generator prefers alphaxiv MCP when available and falls back to the HuggingFace Papers API otherwise.
+
+One-time alphaxiv setup:
+
+```bash
+claude mcp add --transport http alphaxiv https://api.alphaxiv.org/mcp/v1
+```
+
+Each hypothesis stores the papers that motivated it.
+
+## Validation
+
+Run the test suite:
+
+```bash
+uv run pytest tests/ -q --tb=short
+```
 
 ## References
 
-- Agarwal et al., [AutoDiscovery: Open-ended Scientific Discovery via Bayesian Surprise](https://openreview.net/forum?id=kJqTkj2HhF) (NeurIPS 2025)
-- Shi & Evans, [Surprising combinations of research contents and contexts are related to impact](https://www.nature.com/articles/s41467-023-36741-4) (Nature Communications 2023)
-- [Surprisal-Guided Selection](https://arxiv.org/abs/2602.07670) (2026)
+- Agarwal et al., [AutoDiscovery: Open-ended Scientific Discovery via Bayesian Surprise](https://openreview.net/forum?id=kJqTkj2HhF)
+- Shi and Evans, [Surprising combinations of research contents and contexts are related to impact](https://www.nature.com/articles/s41467-023-36741-4)
+- Barnes et al., [Surprisal-Guided Selection](https://arxiv.org/abs/2602.07670)
 
 ## License
 

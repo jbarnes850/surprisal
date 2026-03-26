@@ -5,38 +5,46 @@ MCTS with Bayesian surprise for open-ended scientific discovery.
 ## Architecture
 
 Three layers:
-1. **MCTS Engine** (`mcts.py`) — deterministic search, never calls LLMs directly
-2. **Persistence** (`db.py`, `workspace.py`, `exploration.py`) — SQLite WAL + filesystem
-3. **Agent Dispatcher** (`fsm_runner.py`, `orchestrator.py`) — spawns Claude and Codex agents for hypothesis generation, code writing, experiment execution, and belief elicitation
+
+1. `src/surprisal/mcts.py`
+   Deterministic tree search: UCT, progressive widening, and backpropagation.
+2. `src/surprisal/db.py`, `src/surprisal/exploration.py`, `src/surprisal/workspace.py`
+   SQLite WAL persistence plus exploration and branch workspaces.
+3. `src/surprisal/orchestrator.py`, `src/surprisal/fsm_runner.py`
+   Async orchestration and the per-node experiment FSM.
 
 ## Agent Roles
 
 | Role | Purpose |
-|------|---------|
-| Experiment Generator | Searches literature, identifies gaps, proposes hypotheses |
-| Experiment Programmer | Writes Python code to test hypotheses |
-| Code Executor | Runs code in a network-isolated Docker sandbox |
-| Experiment Analyst | Analyzes execution output, provides feedback on failures |
-| Experiment Reviewer | Approves or rejects experiments based on result validity |
-| Experiment Reviser | Revises rejected experiment plans |
-| Hypothesis Generator | Formalizes experimental results into structured hypotheses |
-| Belief Agent | Evaluates hypothesis truth before and after evidence (Bayesian surprise) |
+| --- | --- |
+| Experiment Generator | Search literature, identify gaps, propose a hypothesis and one executable plan |
+| Experiment Runner | Implement and execute the plan inside the sandbox |
+| Experiment Analyst | Check execution fidelity, metrics, and failure modes |
+| Experiment Reviewer | Decide whether the evidence is valid enough to use |
+| Experiment Reviser | Repair rejected plans without changing the hypothesis |
+| Hypothesis Generator | Formalize the post-experiment hypothesis record |
+| Belief Agent | Sample binary prior and posterior judgments for Bayesian surprise |
 
-## Key Files
+Claude is required for generator, hypothesis, and belief roles. If Codex is available it handles analyst, reviewer, and reviser roles; otherwise Claude handles those too.
 
-- `src/surprisal/fsm_runner.py` — multi-agent FSM pipeline per hypothesis node
-- `src/surprisal/orchestrator.py` — async worker pool with parallel MCTS
-- `src/surprisal/mcts.py` — UCT, progressive widening, backpropagation
-- `src/surprisal/bayesian.py` — Beta distribution estimation, KL divergence, belief shift detection
-- `src/surprisal/prompts/` — system prompts for all 8 agent roles
+Claude research sessions, code-analysis sessions, and runner sessions are persisted separately per branch in `sessions.json` and resumed automatically. Belief sampling forks from the persisted research session so repeated samples do not contaminate one another.
 
-## Testing
+## Sandbox
 
-```bash
-uv run pytest tests/ -q --tb=short
-```
+The experiment runner operates in a bounded sandbox with:
 
-## Running
+- Python and Bash
+- local filesystem access
+- public network access
+- HuggingFace datasets and models
+- optional W&B logging if configured
+- GPU access when available and enabled
+
+The runtime is not restricted to synthetic-only micro-experiments. Plans may use real public datasets or models when they are the right instrument for the hypothesis.
+
+The local Docker backend is the canonical path for the full runner contract. The HF Jobs backend is available for one-shot remote execution, but it is intentionally narrower.
+
+## Commands
 
 ```bash
 uv run surprisal init --domain "your research topic" --seed "your hypothesis"
@@ -45,11 +53,43 @@ uv run surprisal status --tree
 uv run surprisal export --top 5 --format md
 ```
 
+Machine-readable output:
+
+- `init`, `explore`, `status`, `resume`, `prune`, and `config` support `--json`
+- `export` supports `--format json` and `--json`
+
+`resume` resumes an exploration, not a per-agent conversational session.
+
+## Configuration
+
+Exploration state defaults to `~/.surprisal`.
+
+Config is loaded from:
+
+- `${SURPRISAL_HOME}/config.toml` when `SURPRISAL_HOME` is set
+- `~/.surprisal/config.toml` when that file exists
+- otherwise `${XDG_CONFIG_HOME:-~/.config}/surprisal/config.toml`
+
+Show config:
+
+```bash
+uv run surprisal config --show
+```
+
+Live knobs are defined in `src/surprisal/config.py`. Removed or unsupported knobs should not be reintroduced without wiring them into runtime behavior and tests.
+
 ## Literature Search
 
-The experiment generator searches for recent papers via [alphaxiv MCP](https://www.alphaxiv.org/docs/mcp) (semantic search) or the [HuggingFace Papers API](https://huggingface.co/docs/hub/api#papers) (public fallback). Each hypothesis tracks which papers informed it.
+The generator uses alphaxiv MCP when available and falls back to the HuggingFace Papers API otherwise.
 
-Setup (one-time):
+Setup:
+
 ```bash
 claude mcp add --transport http alphaxiv https://api.alphaxiv.org/mcp/v1
+```
+
+## Testing
+
+```bash
+uv run pytest tests/ -q --tb=short
 ```
