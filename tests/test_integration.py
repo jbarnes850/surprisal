@@ -116,8 +116,10 @@ class TestCLIIntegration:
         runner.invoke(main, ["init", "--domain", "test", "--seed", "hypothesis"])
         r = runner.invoke(main, ["explore", "--budget", "2", "--concurrency", "1"])
         assert r.exit_code == 0, f"explore failed: {r.output}"
-        # Should have expanded nodes (placeholder FSM)
-        output = json.loads(r.output)
+        # CLI prints status lines before JSON; extract the JSON block
+        json_start = r.output.find("{")
+        assert json_start >= 0, f"No JSON found in output: {r.output}"
+        output = json.loads(r.output[json_start:])
         assert output["iterations"] >= 1
 
     def test_export_after_explore(self, tmp_path, monkeypatch):
