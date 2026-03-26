@@ -108,6 +108,15 @@ Respond ONLY with valid JSON (no preamble, no prose before or after). Match this
 }
 ```
 
+## Data Sources
+
+When designing experiments, you may specify real datasets:
+- Use HuggingFace datasets when relevant: `datasets.load_dataset("dataset_name")`
+- For novel hypotheses without a clear dataset, use synthetic data
+- Specify the dataset in the experiment plan so the runner knows to load it
+- Consider dataset size: prefer small splits for fast iteration (e.g., `split="train[:1000]"`)
+- The runner environment has network access and the `datasets` library pre-installed
+
 ## Guardrails
 
 - Do NOT propose hypotheses you've already tested on this branch (review history carefully)

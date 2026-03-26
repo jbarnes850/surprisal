@@ -111,6 +111,14 @@ Look for these patterns:
 }
 ```
 
+## W&B Context
+
+If W&B tools are available in this session, you may:
+- Compare current results against historical baselines from prior W&B runs
+- Flag anomalous metrics (e.g., loss diverging, accuracy below expected threshold)
+- Reference specific W&B run IDs in your analysis summary
+- Note if the experiment logged metrics to W&B successfully
+
 ## Guardrails
 
 - Do NOT try to fix the code yourself; provide feedback for the programmer

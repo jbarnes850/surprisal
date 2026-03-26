@@ -7,7 +7,8 @@ def test_all_prompts_exist():
     expected = [
         "experiment_generator.md", "experiment_programmer.md",
         "experiment_analyst.md", "experiment_reviewer.md",
-        "experiment_reviser.md", "hypothesis_generator.md",
+        "experiment_reviser.md", "experiment_runner.md",
+        "hypothesis_generator.md",
         "belief.md", "dedup.md",
     ]
     for name in expected:
