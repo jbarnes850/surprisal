@@ -194,6 +194,35 @@ def test_node_visit_stats_view(tmp_db):
     assert abs(ss - 5.0) < 1e-9
 
 
+def test_cited_papers_column_exists(tmp_db):
+    cols = {row[1] for row in tmp_db.execute("PRAGMA table_info(nodes)").fetchall()}
+    assert "cited_papers" in cols
+
+
+def test_insert_node_with_cited_papers(tmp_db):
+    import json
+    papers = json.dumps([{"arxiv_id": "2602.07670", "title": "Test", "gap": "gap"}])
+    node = _make_node(cited_papers=papers)
+    tmp_db.insert_node(node)
+    fetched = tmp_db.get_node(node.id)
+    assert fetched.cited_papers is not None
+    parsed = json.loads(fetched.cited_papers)
+    assert parsed[0]["arxiv_id"] == "2602.07670"
+
+
+def test_migration_adds_cited_papers_to_existing_db(tmp_path):
+    from surprisal.db import Database
+    db = Database(tmp_path / "old.db")
+    # Create a minimal table WITHOUT cited_papers
+    db.conn.execute("CREATE TABLE nodes (id TEXT PRIMARY KEY, exploration_id TEXT)")
+    db.conn.commit()
+    # Now initialize — should add missing columns via migration
+    db.initialize()
+    cols = {row[1] for row in db.execute("PRAGMA table_info(nodes)").fetchall()}
+    assert "cited_papers" in cols
+    db.close()
+
+
 def test_node_visit_stats_with_virtual_loss(tmp_db):
     parent = _make_node(visit_count=100)
     child = _make_node(

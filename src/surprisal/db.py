@@ -27,6 +27,7 @@ class Database:
                 context TEXT,
                 variables TEXT,
                 relationships TEXT,
+                cited_papers TEXT,
                 depth INTEGER DEFAULT 0,
                 visit_count INTEGER DEFAULT 0,
                 virtual_loss INTEGER DEFAULT 0,
@@ -92,6 +93,12 @@ class Database:
             """
         )
         self.conn.commit()
+
+        # Migration: add columns that may be missing in old databases
+        existing_cols = {row[1] for row in self.execute("PRAGMA table_info(nodes)").fetchall()}
+        if "cited_papers" not in existing_cols:
+            self.execute("ALTER TABLE nodes ADD COLUMN cited_papers TEXT")
+            self.conn.commit()
 
     # ------------------------------------------------------------------
     # Node CRUD
