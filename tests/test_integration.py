@@ -1,13 +1,32 @@
 """Integration tests: full single-node MCTS lifecycle and CLI end-to-end flows."""
 
 import json
-import pytest
 from click.testing import CliRunner
-from surprisal.db import Database
 from surprisal.models import Node
 from surprisal.mcts import select_node, backpropagate
 from surprisal.bayesian import compute_surprisal
 from surprisal.cli import main
+from surprisal.providers import LiteratureStatus, ProviderStatus
+
+
+def _patch_cli_explore(monkeypatch, *, iterations: int = 1) -> None:
+    async def _fake_detect_providers():
+        return ProviderStatus(claude_available=True, codex_available=True)
+
+    async def _fake_detect_literature_provider():
+        return LiteratureStatus(provider="huggingface")
+
+    async def _fake_run_exploration(**kwargs):
+        return {
+            "status": "completed",
+            "iterations": iterations,
+            "nodes_total": 2,
+            "surprisals_found": 0,
+        }
+
+    monkeypatch.setattr("surprisal.providers.detect_providers", _fake_detect_providers)
+    monkeypatch.setattr("surprisal.providers.detect_literature_provider", _fake_detect_literature_provider)
+    monkeypatch.setattr("surprisal.cli.run_exploration", _fake_run_exploration)
 
 
 class TestSingleNodeLifecycle:
@@ -93,7 +112,7 @@ class TestCLIIntegration:
         # Init
         r = runner.invoke(main, ["init", "--domain", "integration test", "--seed", "test h", "--json"])
         assert r.exit_code == 0, f"init failed: {r.output}"
-        data = json.loads(r.output)
+        json.loads(r.output)
 
         # Status
         r = runner.invoke(main, ["status", "--json"])
@@ -112,18 +131,27 @@ class TestCLIIntegration:
 
     def test_init_then_explore_budget(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
+        _patch_cli_explore(monkeypatch, iterations=2)
         runner = CliRunner()
         runner.invoke(main, ["init", "--domain", "test", "--seed", "hypothesis"])
-        r = runner.invoke(main, ["explore", "--budget", "2", "--concurrency", "1"])
+        r = runner.invoke(main, ["explore", "--budget", "2", "--concurrency", "1", "--json"])
         assert r.exit_code == 0, f"explore failed: {r.output}"
-        # CLI prints status lines before JSON; extract the JSON block
-        json_start = r.output.find("{")
-        assert json_start >= 0, f"No JSON found in output: {r.output}"
-        output = json.loads(r.output[json_start:])
+        output = json.loads(r.output)
         assert output["iterations"] >= 1
+
+    def test_resume_dry_run_json(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
+        runner = CliRunner()
+        init = runner.invoke(main, ["init", "--domain", "test", "--seed", "hypothesis", "--json"])
+        exp_id = json.loads(init.output)["exploration_id"]
+        r = runner.invoke(main, ["resume", exp_id, "--dry-run", "--json"])
+        assert r.exit_code == 0, f"resume failed: {r.output}"
+        output = json.loads(r.output)
+        assert output["status"] == "dry_run"
 
     def test_export_after_explore(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
+        _patch_cli_explore(monkeypatch, iterations=1)
         runner = CliRunner()
         runner.invoke(main, ["init", "--domain", "test", "--seed", "hypothesis"])
         runner.invoke(main, ["explore", "--budget", "3", "--concurrency", "1"])
@@ -132,6 +160,7 @@ class TestCLIIntegration:
 
     def test_prune_after_explore(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
+        _patch_cli_explore(monkeypatch, iterations=1)
         runner = CliRunner()
         runner.invoke(main, ["init", "--domain", "test", "--seed", "hypothesis"])
         runner.invoke(main, ["explore", "--budget", "3", "--concurrency", "1"])

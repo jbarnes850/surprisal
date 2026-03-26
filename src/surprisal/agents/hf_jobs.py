@@ -29,7 +29,14 @@ class HFJobsSandbox:
         self.config = config
         self.credentials = credentials
 
-    async def execute(self, experiment_prompt: str, workspace: Path, config: SandboxConfig) -> AgentResult:
+    async def execute(
+        self,
+        experiment_prompt: str,
+        workspace: Path,
+        config: SandboxConfig,
+        system_prompt_file: str | None = None,
+        session_id: str | None = None,
+    ) -> AgentResult:
         model = "opus"
         agent = ClaudeAgent(model=model, max_turns=3)
         script_result = await agent.invoke(
@@ -38,8 +45,11 @@ class HFJobsSandbox:
                 "Print results as JSON to stdout. Include all imports.\n"
                 "Output ONLY code, no explanation."
             ),
+            system_prompt_file=system_prompt_file,
             output_format="text",
             no_tools=True,
+            session_id=session_id,
+            resume_session=bool(session_id),
         )
         script = extract_code(script_result.raw)
         script_path = workspace / "experiment.py"
@@ -76,4 +86,8 @@ class HFJobsSandbox:
         raw = "\n".join(str(log) for log in logs)
         exit_code = 0 if info.status.stage == "COMPLETED" else 1
         logger.info(f"HF Job {job.id} finished: {info.status.stage}")
-        return AgentResult.from_raw(raw, exit_code=exit_code)
+        return AgentResult.from_raw(
+            raw,
+            exit_code=exit_code,
+            session_id=script_result.session_id,
+        )

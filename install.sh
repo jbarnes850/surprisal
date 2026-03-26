@@ -38,6 +38,7 @@ fi
 echo ""
 echo "--- Installing surprisal ---"
 uv sync
+uv tool install --force --from . surprisal
 # Reinstall CUDA torch if on GPU system (uv sync installs CPU-only)
 if nvidia-smi &>/dev/null; then
     echo "GPU detected — installing CUDA PyTorch..."
@@ -97,7 +98,19 @@ read -rp "W&B API key: " WANDB_KEY
 read -rp "HuggingFace token: " HF_TOKEN
 
 # 10. Write config
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/surprisal"
+LEGACY_DIR="$HOME/.surprisal"
+XDG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/surprisal"
+if [ -n "${SURPRISAL_HOME:-}" ]; then
+    DATA_DIR="$SURPRISAL_HOME"
+    CONFIG_DIR="$SURPRISAL_HOME"
+elif [ -d "$LEGACY_DIR" ] && [ ! -d "$XDG_DIR" ]; then
+    DATA_DIR="$LEGACY_DIR"
+    CONFIG_DIR="$LEGACY_DIR"
+else
+    DATA_DIR="$XDG_DIR"
+    CONFIG_DIR="$XDG_DIR"
+fi
+mkdir -p "$DATA_DIR"
 mkdir -p "$CONFIG_DIR"
 cat > "$CONFIG_DIR/config.toml" << EOF
 [sandbox]
@@ -110,6 +123,7 @@ hf_token = "${HF_TOKEN:-}"
 EOF
 echo ""
 echo "Config written to $CONFIG_DIR/config.toml"
+echo "Exploration data will be stored under $DATA_DIR"
 
 echo ""
 echo "=== Setup Complete ==="

@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from surprisal.models import Node
 from surprisal.workspace import (
     create_workspace, write_branch_context, write_claude_md,
@@ -66,6 +65,18 @@ def test_copy_parent_memory(tmp_path):
     (parent_ws / "memory" / "insights.md").write_text("parent insights")
     copy_parent_memory(parent_ws, child_ws)
     assert (child_ws / "memory" / "insights.md").read_text() == "parent insights"
+
+
+def test_copy_parent_memory_recurses_into_nested_directories(tmp_path):
+    parent_ws = create_workspace(tmp_path, "parent")
+    child_ws = create_workspace(tmp_path, "child")
+    nested_dir = parent_ws / "memory" / "papers" / "2026"
+    nested_dir.mkdir(parents=True)
+    (nested_dir / "summary.md").write_text("nested memory")
+
+    copy_parent_memory(parent_ws, child_ws)
+
+    assert (child_ws / "memory" / "papers" / "2026" / "summary.md").read_text() == "nested memory"
 
 
 def test_get_experiment_dir(tmp_path):

@@ -20,7 +20,8 @@ STATES = [
 
 
 def select_next_state(current_state: str, response: Optional[FSMResponse],
-                       failure_count: int, revision_count: int) -> str:
+                       failure_count: int, revision_count: int,
+                       max_failures: int = 6, max_revisions: int = 1) -> str:
     if current_state == "start":
         return "experiment_generator"
     elif current_state == "experiment_generator":
@@ -31,13 +32,13 @@ def select_next_state(current_state: str, response: Optional[FSMResponse],
         return "experiment_analyst"
     elif current_state == "experiment_analyst":
         if response and response.error:
-            if failure_count < 6:
+            if failure_count < max_failures:
                 return "experiment_runner"
             return "FAIL"
         return "experiment_reviewer"
     elif current_state == "experiment_reviewer":
         if response and response.error:
-            if revision_count < 1:
+            if revision_count < max_revisions:
                 return "experiment_reviser"
             return "FAIL"
         return "hypothesis_generator"

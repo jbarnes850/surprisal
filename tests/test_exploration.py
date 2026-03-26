@@ -1,9 +1,9 @@
-import json
-import pytest
-from pathlib import Path
 from surprisal.exploration import (
-    create_exploration, load_exploration, find_latest_exploration,
-    update_session, get_session_ids, ExplorationMeta,
+    create_exploration,
+    find_latest_exploration,
+    load_branch_sessions,
+    load_exploration,
+    save_branch_sessions,
 )
 
 
@@ -40,8 +40,10 @@ def test_create_exploration_different_domains(tmp_path):
 
 def test_find_latest_exploration(tmp_path):
     create_exploration(tmp_path, domain="first")
-    import time; time.sleep(0.01)  # ensure different timestamps
-    exp2 = create_exploration(tmp_path, domain="second")
+    import time
+
+    time.sleep(0.01)  # ensure different timestamps
+    create_exploration(tmp_path, domain="second")
     latest = find_latest_exploration(tmp_path)
     assert latest is not None
     loaded = load_exploration(latest)
@@ -52,27 +54,23 @@ def test_find_latest_exploration_empty(tmp_path):
     assert find_latest_exploration(tmp_path) is None
 
 
-def test_update_session(tmp_path):
-    exp = create_exploration(tmp_path, domain="test", budget=100)
+def test_branch_sessions_round_trip(tmp_path):
+    exp = create_exploration(tmp_path, domain="session domain", budget=10)
     exp_dir = tmp_path / exp.id
-    update_session(exp_dir, branch_id="branch_a",
-                   claude_session_id="claude-123", codex_session_id=None)
-    sessions = get_session_ids(exp_dir, "branch_a")
+    save_branch_sessions(
+        exp_dir,
+        "root-a",
+        research_claude_session_id="claude-123",
+        code_session_id="codex-456",
+        code_provider="codex",
+        runner_claude_session_id="runner-789",
+    )
+
+    sessions = load_branch_sessions(exp_dir, "root-a")
+
+    assert sessions["research_claude_session_id"] == "claude-123"
     assert sessions["claude_session_id"] == "claude-123"
-    assert sessions["codex_session_id"] is None
-
-
-def test_get_session_missing_branch(tmp_path):
-    exp = create_exploration(tmp_path, domain="test", budget=100)
-    exp_dir = tmp_path / exp.id
-    sessions = get_session_ids(exp_dir, "nonexistent")
-    assert sessions is None
-
-
-def test_update_session_multiple_branches(tmp_path):
-    exp = create_exploration(tmp_path, domain="test", budget=100)
-    exp_dir = tmp_path / exp.id
-    update_session(exp_dir, "b1", claude_session_id="c1")
-    update_session(exp_dir, "b2", claude_session_id="c2")
-    assert get_session_ids(exp_dir, "b1")["claude_session_id"] == "c1"
-    assert get_session_ids(exp_dir, "b2")["claude_session_id"] == "c2"
+    assert sessions["code_session_id"] == "codex-456"
+    assert sessions["code_provider"] == "codex"
+    assert sessions["codex_session_id"] == "codex-456"
+    assert sessions["runner_claude_session_id"] == "runner-789"

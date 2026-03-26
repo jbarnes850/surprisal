@@ -1,6 +1,5 @@
 import uuid
-from datetime import datetime
-from surprisal.models import Node, BeliefSample, AgentInvocation
+from surprisal.models import Node, BeliefSample
 from surprisal.db import Database
 
 
@@ -143,6 +142,18 @@ def test_count_completed_iterations(tmp_db):
     assert count == 2
 
 
+def test_count_completed_expansions_excludes_root(tmp_db):
+    exp_id = "exp-expand"
+    root = _make_node(exploration_id=exp_id, status="verified")
+    verified_child = _make_node(exploration_id=exp_id, parent_id=root.id, status="verified")
+    failed_child = _make_node(exploration_id=exp_id, parent_id=root.id, status="failed")
+
+    for n in [root, verified_child, failed_child]:
+        tmp_db.insert_node(n)
+
+    assert tmp_db.count_completed_expansions(exp_id) == 2
+
+
 def test_reset_stale_expanding(tmp_db):
     expanding = _make_node(status="expanding", virtual_loss=3)
     pending = _make_node(status="pending", virtual_loss=0)
@@ -165,6 +176,20 @@ def test_reset_stale_expanding(tmp_db):
     fetched_ver = tmp_db.get_node(verified.id)
     assert fetched_ver.status == "verified"
     assert fetched_ver.virtual_loss == 1
+
+
+def test_reset_stale_expanding_scoped_to_exploration(tmp_db):
+    keep = _make_node(exploration_id="exp-keep", status="expanding", virtual_loss=2)
+    reset = _make_node(exploration_id="exp-reset", status="expanding", virtual_loss=3)
+    for n in [keep, reset]:
+        tmp_db.insert_node(n)
+
+    tmp_db.reset_stale_expanding(exploration_id="exp-reset")
+
+    assert tmp_db.get_node(keep.id).status == "expanding"
+    assert tmp_db.get_node(keep.id).virtual_loss == 2
+    assert tmp_db.get_node(reset.id).status == "pending"
+    assert tmp_db.get_node(reset.id).virtual_loss == 0
 
 
 def test_node_visit_stats_view(tmp_db):
@@ -211,7 +236,6 @@ def test_insert_node_with_cited_papers(tmp_db):
 
 
 def test_migration_adds_cited_papers_to_existing_db(tmp_path):
-    from surprisal.db import Database
     db = Database(tmp_path / "old.db")
     # Create a minimal table WITHOUT cited_papers
     db.conn.execute("CREATE TABLE nodes (id TEXT PRIMARY KEY, exploration_id TEXT)")
@@ -241,3 +265,19 @@ def test_node_visit_stats_with_virtual_loss(tmp_db):
     ).fetchall()
     # exploit_score = 5.0 / (20 + 2) = 0.2272...
     assert abs(rows[0][0] - 5.0 / 22) < 1e-9
+
+
+def test_count_nodes_and_surprisals_scoped_to_exploration(tmp_db):
+    exp_a_root = _make_node(exploration_id="exp-a", status="verified")
+    exp_a_child = _make_node(
+        exploration_id="exp-a",
+        parent_id=exp_a_root.id,
+        status="verified",
+        belief_shifted=True,
+    )
+    exp_b_root = _make_node(exploration_id="exp-b", status="verified")
+    for n in [exp_a_root, exp_a_child, exp_b_root]:
+        tmp_db.insert_node(n)
+
+    assert tmp_db.count_nodes("exp-a") == 2
+    assert tmp_db.count_surprisals("exp-a") == 1

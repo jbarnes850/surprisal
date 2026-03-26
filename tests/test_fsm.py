@@ -1,4 +1,3 @@
-import pytest
 from surprisal.fsm import select_next_state, FSMResponse
 
 
@@ -38,6 +37,23 @@ def test_analyst_error_at_max_fails():
     assert select_next_state("experiment_analyst", FSMResponse(error=True), failure_count=6, revision_count=0) == "FAIL"
 
 
+def test_analyst_error_respects_custom_max_failures():
+    assert select_next_state(
+        "experiment_analyst",
+        FSMResponse(error=True),
+        failure_count=1,
+        revision_count=0,
+        max_failures=2,
+    ) == "experiment_runner"
+    assert select_next_state(
+        "experiment_analyst",
+        FSMResponse(error=True),
+        failure_count=2,
+        revision_count=0,
+        max_failures=2,
+    ) == "FAIL"
+
+
 def test_analyst_success_goes_to_reviewer():
     assert select_next_state("experiment_analyst", FSMResponse(error=False), 0, 0) == "experiment_reviewer"
 
@@ -48,6 +64,23 @@ def test_reviewer_error_goes_to_reviser():
 
 def test_reviewer_error_at_max_fails():
     assert select_next_state("experiment_reviewer", FSMResponse(error=True), 0, revision_count=1) == "FAIL"
+
+
+def test_reviewer_error_respects_custom_max_revisions():
+    assert select_next_state(
+        "experiment_reviewer",
+        FSMResponse(error=True),
+        0,
+        revision_count=0,
+        max_revisions=0,
+    ) == "FAIL"
+    assert select_next_state(
+        "experiment_reviewer",
+        FSMResponse(error=True),
+        0,
+        revision_count=1,
+        max_revisions=2,
+    ) == "experiment_reviser"
 
 
 def test_reviewer_success_goes_to_hypothesis_generator():

@@ -1,5 +1,4 @@
 import json
-import pytest
 from surprisal.mcp_config import generate_mcp_config
 from surprisal.config import CredentialsConfig
 

@@ -1,8 +1,7 @@
 import numpy as np
-import pytest
 from surprisal.models import Node
 from surprisal.dedup import (
-    embed_hypothesis, build_embeddings, build_hac_tree,
+    embed_hypothesis, build_hac_tree,
     merge_decision, deduplicate,
 )
 
@@ -72,3 +71,61 @@ def test_deduplicate_with_nodes(tmp_db):
     assert result["total_nodes"] == 4
     # The 3 identical should cluster; the different one should not
     assert result["clusters"] >= 1
+
+
+def test_deduplicate_scoped_to_exploration(tmp_db):
+    tmp_db.insert_node(Node(
+        id="same_a1", exploration_id="exp-a",
+        hypothesis="Identical hypothesis text",
+        status="verified", bayesian_surprise=1.0,
+    ))
+    tmp_db.insert_node(Node(
+        id="same_a2", exploration_id="exp-a",
+        hypothesis="Identical hypothesis text",
+        status="verified", bayesian_surprise=1.0,
+    ))
+    tmp_db.insert_node(Node(
+        id="same_b1", exploration_id="exp-b",
+        hypothesis="Different exploration duplicate",
+        status="verified", bayesian_surprise=1.0,
+    ))
+    tmp_db.insert_node(Node(
+        id="same_b2", exploration_id="exp-b",
+        hypothesis="Different exploration duplicate",
+        status="verified", bayesian_surprise=1.0,
+    ))
+
+    result = deduplicate(tmp_db, exploration_id="exp-a")
+    assert result["total_nodes"] == 2
+    assert result["clusters"] == 1
+    assert tmp_db.get_node("same_a1").dedup_cluster_id is not None
+    assert tmp_db.get_node("same_b1").dedup_cluster_id is None
+
+
+def test_deduplicate_clears_stale_cluster_assignments_on_rerun(tmp_db):
+    tmp_db.insert_node(Node(
+        id="same_1", exploration_id="exp-a",
+        hypothesis="Identical hypothesis text",
+        status="verified",
+    ))
+    tmp_db.insert_node(Node(
+        id="same_2", exploration_id="exp-a",
+        hypothesis="Identical hypothesis text",
+        status="verified",
+    ))
+
+    first_result = deduplicate(tmp_db, exploration_id="exp-a")
+    assert first_result["clusters"] == 1
+    assert tmp_db.get_node("same_1").dedup_cluster_id is not None
+    assert tmp_db.get_node("same_2").dedup_cluster_id is not None
+
+    tmp_db.update_node(
+        "same_2",
+        hypothesis="A different direction that should not cluster anymore",
+    )
+
+    second_result = deduplicate(tmp_db, exploration_id="exp-a")
+    assert second_result["clusters"] == 0
+    assert second_result["duplicates"] == 0
+    assert tmp_db.get_node("same_1").dedup_cluster_id is None
+    assert tmp_db.get_node("same_2").dedup_cluster_id is None

@@ -1,7 +1,7 @@
 """Runtime MCP config generation with credential injection."""
 import json
 import tempfile
-from pathlib import Path
+
 from surprisal.config import CredentialsConfig
 
 

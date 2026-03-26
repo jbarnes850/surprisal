@@ -16,7 +16,6 @@ class MCTSConfig:
     alpha_progressive: float = 0.5
     max_depth: int = 30
     belief_samples: int = 30
-    belief_temperature: float = 0.7
     virtual_loss: int = 2
     dedup_interval: int = 50
 
@@ -51,20 +50,11 @@ class CredentialsConfig:
 
 
 @dataclass
-class PredictorConfig:
-    enabled: bool = False
-    model_path: str = ""
-    lambda_weight: float = 0.0
-    min_training_samples: int = 100
-
-
-@dataclass
 class AutoDiscoveryConfig:
     general: GeneralConfig = field(default_factory=GeneralConfig)
     mcts: MCTSConfig = field(default_factory=MCTSConfig)
     agents: AgentsConfig = field(default_factory=AgentsConfig)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
-    predictor: PredictorConfig = field(default_factory=PredictorConfig)
     credentials: CredentialsConfig = field(default_factory=CredentialsConfig)
 
     def set(self, key: str, value: str) -> None:
@@ -93,7 +83,7 @@ def load_config(path: Path) -> AutoDiscoveryConfig:
         return cfg
     with open(path, "rb") as f:
         data = tomllib.load(f)
-    for section_name in ("general", "mcts", "agents", "sandbox", "predictor", "credentials"):
+    for section_name in ("general", "mcts", "agents", "sandbox", "credentials"):
         if section_name in data:
             section = getattr(cfg, section_name)
             for k, v in data[section_name].items():
@@ -104,7 +94,7 @@ def load_config(path: Path) -> AutoDiscoveryConfig:
 
 def save_config(cfg: AutoDiscoveryConfig, path: Path) -> None:
     lines = []
-    for section_name in ("general", "mcts", "agents", "sandbox", "predictor", "credentials"):
+    for section_name in ("general", "mcts", "agents", "sandbox", "credentials"):
         section = getattr(cfg, section_name)
         lines.append(f"[{section_name}]")
         for f in fields(section):

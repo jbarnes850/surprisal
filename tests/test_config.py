@@ -1,5 +1,4 @@
 import pytest
-from pathlib import Path
 from surprisal.config import AutoDiscoveryConfig, load_config, save_config
 
 
@@ -14,6 +13,7 @@ def test_default_config_has_expected_values():
     assert cfg.mcts.belief_samples == 30
     assert cfg.mcts.virtual_loss == 2
     assert cfg.mcts.dedup_interval == 50
+    assert not hasattr(cfg.mcts, "belief_temperature")
     assert cfg.agents.claude_model == "opus"
     assert cfg.agents.codex_model == "gpt-5.4"
     assert cfg.agents.max_turns == 20
@@ -23,7 +23,7 @@ def test_default_config_has_expected_values():
     assert cfg.sandbox.cpu_limit == "4"
     assert cfg.sandbox.timeout == 1800
     assert cfg.sandbox.network is True
-    assert cfg.predictor.enabled is False
+    assert not hasattr(cfg, "predictor")
 
 
 def test_config_round_trip(tmp_path):
@@ -86,6 +86,23 @@ def test_credentials_config_round_trip(tmp_path):
     loaded = load_config(path)
     assert loaded.credentials.wandb_api_key == "test-key-123"
     assert loaded.credentials.hf_token == "hf_test_456"
+
+
+def test_load_config_ignores_removed_sections(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        """
+[mcts]
+belief_samples = 12
+
+[predictor]
+enabled = true
+lambda_weight = 0.5
+"""
+    )
+    loaded = load_config(path)
+    assert loaded.mcts.belief_samples == 12
+    assert not hasattr(loaded, "predictor")
 
 
 def test_config_set_credentials():

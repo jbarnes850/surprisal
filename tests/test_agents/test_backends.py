@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 from unittest.mock import patch, AsyncMock
 from surprisal.agents.backends import detect_gpu, create_backend

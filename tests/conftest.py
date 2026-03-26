@@ -1,5 +1,4 @@
 import pytest
-from pathlib import Path
 from surprisal.db import Database
 
 

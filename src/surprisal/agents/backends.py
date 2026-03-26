@@ -9,7 +9,14 @@ from surprisal.config import SandboxConfig, CredentialsConfig
 
 @runtime_checkable
 class SandboxBackend(Protocol):
-    async def execute(self, experiment_prompt: str, workspace: Path, config: SandboxConfig) -> AgentResult:
+    async def execute(
+        self,
+        experiment_prompt: str,
+        workspace: Path,
+        config: SandboxConfig,
+        system_prompt_file: str | None = None,
+        session_id: str | None = None,
+    ) -> AgentResult:
         ...
 
 

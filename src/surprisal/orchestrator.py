@@ -1,13 +1,22 @@
 import asyncio
-import signal
 import logging
 from pathlib import Path
+
+import signal
+
 from surprisal.config import AutoDiscoveryConfig
 from surprisal.db import Database
-from surprisal.mcts import select_node, backpropagate, max_children
+from surprisal.dedup import deduplicate
+from surprisal.mcts import select_node, backpropagate
 from surprisal.models import Node
 from surprisal.providers import LiteratureStatus, ProviderStatus, detect_literature_provider, detect_providers
-from surprisal.workspace import create_workspace, assign_branch_id, write_branch_context, write_claude_md
+from surprisal.workspace import (
+    assign_branch_id,
+    copy_parent_memory,
+    create_workspace,
+    write_branch_context,
+    write_claude_md,
+)
 
 logger = logging.getLogger("surprisal")
 
@@ -28,6 +37,17 @@ class AtomicCounter:
     @property
     def value(self) -> int:
         return self._value
+
+
+class DedupCheckpoint:
+    """Track the last completed-expansion count that triggered deduplication."""
+
+    def __init__(self):
+        self.last_completed = 0
+
+
+def _format_worker_error(exc: BaseException) -> str:
+    return f"{type(exc).__name__}: {exc}"
 
 
 async def run_exploration(
@@ -53,16 +73,22 @@ async def run_exploration(
     if literature_provider is None:
         literature_provider = await detect_literature_provider()
 
-    # Count completed nodes for any exploration
-    all_nodes = db.execute("SELECT COUNT(*) FROM nodes WHERE status IN ('verified', 'failed')").fetchone()[0]
-    remaining = budget - all_nodes
+    root = db.get_node(root_id)
+    if root is None:
+        return {"status": "error", "message": f"Root node {root_id} not found"}
+    exploration_id = root.exploration_id
+
+    completed_before = db.count_completed_expansions(exploration_id)
+    remaining = budget - completed_before
 
     if remaining <= 0:
         return {"status": "budget_exhausted", "iterations": 0}
 
-    db.reset_stale_expanding()
+    db.reset_stale_expanding(exploration_id=exploration_id)
 
     selection_lock = asyncio.Lock()
+    dedup_lock = asyncio.Lock()
+    dedup_checkpoint = DedupCheckpoint()
     counter = AtomicCounter(remaining)
     shutdown = asyncio.Event()
 
@@ -76,21 +102,33 @@ async def run_exploration(
     workers = [
         asyncio.create_task(
             worker_loop(db, exploration_dir, selection_lock, counter,
-                        shutdown, c_explore, config, root_id, domain,
-                        providers, literature_provider)
+                        dedup_lock, dedup_checkpoint, shutdown, c_explore, config,
+                        root_id, domain, providers, literature_provider)
         )
         for _ in range(concurrency)
     ]
 
-    await asyncio.gather(*workers, return_exceptions=True)
+    worker_results = await asyncio.gather(*workers, return_exceptions=True)
+    worker_errors = [result for result in worker_results if isinstance(result, BaseException)]
+    if worker_errors:
+        messages = [_format_worker_error(err) for err in worker_errors]
+        logger.error("Exploration aborted due to worker failure(s): %s", "; ".join(messages))
+        return {
+            "status": "error",
+            "message": f"Worker failure(s): {'; '.join(messages)}",
+            "worker_errors": messages,
+            "iterations": db.count_completed_expansions(exploration_id) - completed_before,
+            "nodes_total": db.count_nodes(exploration_id),
+            "surprisals_found": db.count_surprisals(exploration_id),
+        }
 
-    total_completed = db.execute("SELECT COUNT(*) FROM nodes WHERE status IN ('verified', 'failed')").fetchone()[0]
-    surprisals = db.execute("SELECT COUNT(*) FROM nodes WHERE belief_shifted = 1").fetchone()[0]
+    total_completed = db.count_completed_expansions(exploration_id)
+    surprisals = db.count_surprisals(exploration_id)
 
     return {
         "status": "completed" if not shutdown.is_set() else "interrupted",
-        "iterations": total_completed - all_nodes,
-        "nodes_total": db.execute("SELECT COUNT(*) FROM nodes").fetchone()[0],
+        "iterations": total_completed - completed_before,
+        "nodes_total": db.count_nodes(exploration_id),
         "surprisals_found": surprisals,
     }
 
@@ -100,6 +138,8 @@ async def worker_loop(
     exploration_dir: Path,
     selection_lock: asyncio.Lock,
     counter: AtomicCounter,
+    dedup_lock: asyncio.Lock,
+    dedup_checkpoint: DedupCheckpoint,
     shutdown: asyncio.Event,
     c_explore: float,
     config: AutoDiscoveryConfig,
@@ -110,7 +150,6 @@ async def worker_loop(
 ) -> None:
     """Per-worker loop: select -> expand -> execute -> backpropagate."""
     import uuid
-    from surprisal.fsm import select_next_state, FSMResponse
 
     while not shutdown.is_set():
         if not await counter.decrement():
@@ -129,9 +168,10 @@ async def worker_loop(
             # Create child node
             child_id = uuid.uuid4().hex[:12]
             existing_children = db.get_children(parent_id, exclude_pruned=True)
+            is_branch_divergence = len(existing_children) > 0
             branch_id = assign_branch_id(
                 parent.branch_id or "root",
-                parent_has_other_children=len(existing_children) > 0,
+                parent_has_other_children=is_branch_divergence,
             )
 
             child = Node(
@@ -149,6 +189,10 @@ async def worker_loop(
         # Set up workspace
         workspaces_dir = exploration_dir / "workspaces"
         ws = create_workspace(workspaces_dir, branch_id)
+        if is_branch_divergence and parent.branch_id and branch_id != parent.branch_id:
+            parent_workspace = workspaces_dir / parent.branch_id
+            if parent_workspace.exists():
+                copy_parent_memory(parent_workspace, ws)
         branch_path = db.get_path_to_root(child_id)
         write_branch_context(ws, branch_path)
         write_claude_md(ws, domain, branch_path)
@@ -180,3 +224,23 @@ async def worker_loop(
             f"Node {child_id} completed: success={success}, "
             f"surprisal={surprisal_value}, BS={node.bayesian_surprise}"
         )
+
+        if config.mcts.dedup_interval > 0:
+            completed = db.count_completed_expansions(parent.exploration_id)
+            if completed > 0 and completed % config.mcts.dedup_interval == 0:
+                async with dedup_lock:
+                    completed = db.count_completed_expansions(parent.exploration_id)
+                    should_dedup = (
+                        completed > 0
+                        and completed % config.mcts.dedup_interval == 0
+                        and completed != dedup_checkpoint.last_completed
+                    )
+                    if should_dedup:
+                        summary = deduplicate(db, exploration_id=parent.exploration_id)
+                        dedup_checkpoint.last_completed = completed
+                        logger.info(
+                            "Deduplication after %s expansions: %s clusters, %s duplicates",
+                            completed,
+                            summary["clusters"],
+                            summary["duplicates"],
+                        )

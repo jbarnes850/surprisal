@@ -230,10 +230,36 @@ class Database:
         ).fetchone()
         return row[0]
 
-    def reset_stale_expanding(self):
-        self.conn.execute(
-            "UPDATE nodes SET status = 'pending', virtual_loss = 0 WHERE status = 'expanding'"
-        )
+    def count_completed_expansions(self, exploration_id: str) -> int:
+        row = self.conn.execute(
+            """SELECT COUNT(*) FROM nodes
+               WHERE exploration_id = ? AND parent_id IS NOT NULL
+               AND status IN ('verified', 'failed')""",
+            (exploration_id,),
+        ).fetchone()
+        return row[0]
+
+    def count_nodes(self, exploration_id: str) -> int:
+        row = self.conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE exploration_id = ?",
+            (exploration_id,),
+        ).fetchone()
+        return row[0]
+
+    def count_surprisals(self, exploration_id: str) -> int:
+        row = self.conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE exploration_id = ? AND belief_shifted = 1",
+            (exploration_id,),
+        ).fetchone()
+        return row[0]
+
+    def reset_stale_expanding(self, exploration_id: str | None = None):
+        sql = "UPDATE nodes SET status = 'pending', virtual_loss = 0 WHERE status = 'expanding'"
+        params = ()
+        if exploration_id is not None:
+            sql += " AND exploration_id = ?"
+            params = (exploration_id,)
+        self.conn.execute(sql, params)
         self.conn.commit()
 
     # ------------------------------------------------------------------

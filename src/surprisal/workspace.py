@@ -2,7 +2,7 @@ import json
 import shutil
 import uuid
 from pathlib import Path
-from typing import Optional
+
 from surprisal.models import Node
 
 
@@ -37,12 +37,12 @@ def write_branch_context(workspace: Path, nodes_path: list[Node]) -> None:
 def write_claude_md(workspace: Path, domain: str, nodes_path: list[Node]) -> None:
     """Write CLAUDE.md with domain and branch context for Claude agents."""
     lines = [
-        f"# AutoDiscovery Branch Context",
-        f"",
-        f"## Domain",
+        "# AutoDiscovery Branch Context",
+        "",
+        "## Domain",
         f"{domain}",
-        f"",
-        f"## Branch History (root → current)",
+        "",
+        "## Branch History (root → current)",
     ]
     for node in reversed(nodes_path):
         lines.append(f"- **Depth {node.depth}**: {node.hypothesis}")
@@ -69,9 +69,7 @@ def copy_parent_memory(parent_workspace: Path, child_workspace: Path) -> None:
     parent_mem = parent_workspace / "memory"
     child_mem = child_workspace / "memory"
     if parent_mem.exists():
-        for item in parent_mem.iterdir():
-            if item.is_file():
-                shutil.copy2(item, child_mem / item.name)
+        shutil.copytree(parent_mem, child_mem, dirs_exist_ok=True)
 
 
 def get_experiment_dir(workspace: Path, node_id: str) -> Path:

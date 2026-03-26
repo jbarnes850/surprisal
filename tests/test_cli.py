@@ -1,6 +1,8 @@
 import json
+
 from click.testing import CliRunner
-from surprisal.cli import main
+
+from surprisal.cli import get_config_path, get_home, main
 
 
 def test_init_creates_exploration(tmp_path, monkeypatch):
@@ -33,9 +35,23 @@ def test_status_shows_exploration(tmp_path, monkeypatch):
 def test_config_show(tmp_path, monkeypatch):
     monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
     runner = CliRunner()
+    runner.invoke(main, ["config", "--set", "credentials.wandb_api_key", "secret-key-1234"])
     result = runner.invoke(main, ["config", "--show"])
     assert result.exit_code == 0
+    assert f"Config path: {tmp_path / 'config.toml'}" in result.output
     assert "c_explore" in result.output
+    assert "***********1234" in result.output
+
+
+def test_config_show_json(tmp_path, monkeypatch):
+    monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
+    runner = CliRunner()
+    runner.invoke(main, ["config", "--set", "credentials.wandb_api_key", "secret-key-1234"])
+    result = runner.invoke(main, ["config", "--show", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["config_path"] == str(tmp_path / "config.toml")
+    assert payload["config"]["credentials"]["wandb_api_key"] == "***********1234"
 
 
 def test_export_no_exploration_fails(tmp_path, monkeypatch):
@@ -54,6 +70,16 @@ def test_prune_dry_run(tmp_path, monkeypatch):
     assert result.exit_code == 0
 
 
+def test_prune_dry_run_json(tmp_path, monkeypatch):
+    monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
+    runner = CliRunner()
+    runner.invoke(main, ["init", "--domain", "test", "--seed", "h"])
+    result = runner.invoke(main, ["prune", "--dry-run", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["dry_run"] is True
+
+
 def test_explore_dry_run(tmp_path, monkeypatch):
     monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
     runner = CliRunner()
@@ -61,3 +87,50 @@ def test_explore_dry_run(tmp_path, monkeypatch):
     result = runner.invoke(main, ["explore", "--dry-run"])
     assert result.exit_code == 0
     assert "Would expand" in result.output
+
+
+def test_explore_dry_run_json(tmp_path, monkeypatch):
+    monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
+    runner = CliRunner()
+    runner.invoke(main, ["init", "--domain", "test", "--seed", "h"])
+    result = runner.invoke(main, ["explore", "--dry-run", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["status"] == "dry_run"
+    assert payload["node_id"]
+
+
+def test_resume_reuses_explore_behavior(tmp_path, monkeypatch):
+    monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
+    runner = CliRunner()
+    init = runner.invoke(main, ["init", "--domain", "test", "--seed", "h", "--json"])
+    exp_id = json.loads(init.output)["exploration_id"]
+    result = runner.invoke(main, ["resume", exp_id, "--dry-run", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["status"] == "dry_run"
+
+
+def test_get_config_path_defaults_to_xdg_when_no_legacy_home(tmp_path, monkeypatch):
+    monkeypatch.delenv("SURPRISAL_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert get_config_path() == tmp_path / "xdg" / "surprisal" / "config.toml"
+
+
+def test_get_home_uses_legacy_data_directory_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("SURPRISAL_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    legacy_home = tmp_path / "home" / ".surprisal"
+    assert get_home() == legacy_home
+
+
+def test_get_config_path_prefers_legacy_config_when_present(tmp_path, monkeypatch):
+    monkeypatch.delenv("SURPRISAL_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    legacy_config = tmp_path / "home" / ".surprisal" / "config.toml"
+    legacy_config.parent.mkdir(parents=True)
+    legacy_config.write_text("[general]\ndefault_budget = 5\n")
+    assert get_config_path() == legacy_config

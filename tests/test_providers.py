@@ -1,4 +1,3 @@
-import pytest
 from surprisal.providers import LiteratureStatus, ProviderStatus
 
 
