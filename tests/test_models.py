@@ -39,3 +39,16 @@ def test_exploration_creation():
 def test_agent_invocation_creation():
     inv = AgentInvocation(node_id="abc", role="experiment_generator", provider="claude")
     assert inv.exit_code is None
+
+
+def test_node_cited_papers():
+    node = Node(id="abc", exploration_id="exp1", hypothesis="h",
+        cited_papers=json.dumps([{"arxiv_id": "2602.07670", "title": "Test", "gap": "untested"}]))
+    papers = json.loads(node.cited_papers)
+    assert len(papers) == 1
+    assert papers[0]["arxiv_id"] == "2602.07670"
+
+
+def test_node_cited_papers_defaults_none():
+    node = Node(id="abc", exploration_id="exp1", hypothesis="h")
+    assert node.cited_papers is None

@@ -13,6 +13,7 @@ class Node:
     context: Optional[str] = None
     variables: Optional[str] = None  # JSON array
     relationships: Optional[str] = None  # JSON array
+    cited_papers: Optional[str] = None  # JSON array of {arxiv_id, title, gap}
     depth: int = 0
     visit_count: int = 0
     virtual_loss: int = 0
