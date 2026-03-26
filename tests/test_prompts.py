@@ -31,3 +31,11 @@ def test_dedup_has_hypothesis_placeholders():
     text = (prompts_dir / "dedup.md").read_text()
     assert "{hypothesis_1}" in text
     assert "{hypothesis_2}" in text
+
+
+def test_experiment_generator_has_literature_section():
+    prompts_dir = Path(surprisal.__file__).parent / "prompts"
+    text = (prompts_dir / "experiment_generator.md").read_text()
+    assert "Literature Grounding" in text
+    assert "cited_papers" in text
+    assert "arxiv_id" in text

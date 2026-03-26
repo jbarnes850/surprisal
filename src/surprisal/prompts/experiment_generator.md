@@ -26,3 +26,27 @@ Respond with JSON matching this schema:
   "experiment_plan": "Natural language description of what the experiment should do. Do not write code — describe it for a programmer. Keep it to 2-3 sentences maximum."
 }
 ```
+
+## Literature Grounding (REQUIRED)
+
+Before proposing a hypothesis, you MUST search for relevant papers:
+
+1. Search for 3-5 papers related to the current branch topic using the available paper search tools
+2. Read the limitations, future work, and open problems sections of the most relevant 2-3 papers
+3. Identify a specific gap: an untested assumption, a contradicted claim, or an unexplored direction
+4. Propose a hypothesis that directly tests this gap
+
+Your hypothesis should be falsifiable and grounded in a specific paper's limitation.
+
+If paper search is unavailable or returns no results, proceed with your parametric knowledge and set cited_papers to an empty array.
+
+Include cited papers in your JSON response:
+```json
+"cited_papers": [
+  {
+    "arxiv_id": "2602.07670",
+    "title": "Paper title",
+    "gap": "What this paper doesn't address that our hypothesis tests"
+  }
+]
+```

@@ -47,6 +47,11 @@ def test_config_set_value():
     assert cfg.mcts.c_explore == pytest.approx(2.0)
 
 
+def test_generator_timeout_default():
+    cfg = AutoDiscoveryConfig()
+    assert cfg.agents.generator_timeout == 180
+
+
 def test_config_set_invalid_key_raises():
     cfg = AutoDiscoveryConfig()
     with pytest.raises(KeyError):

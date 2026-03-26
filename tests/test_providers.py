@@ -1,5 +1,5 @@
 import pytest
-from surprisal.providers import ProviderStatus
+from surprisal.providers import LiteratureStatus, ProviderStatus
 
 
 def test_both_available():
@@ -24,3 +24,19 @@ def test_neither_available():
     status = ProviderStatus(claude_available=False, codex_available=False)
     assert status.any_available is False
     assert status.both_available is False
+
+
+def test_literature_alphaxiv():
+    status = LiteratureStatus(provider="alphaxiv")
+    assert status.has_semantic_search is True
+    assert status.provider == "alphaxiv"
+
+
+def test_literature_huggingface():
+    status = LiteratureStatus(provider="huggingface")
+    assert status.has_semantic_search is False
+
+
+def test_literature_none():
+    status = LiteratureStatus(provider="none")
+    assert status.has_semantic_search is False

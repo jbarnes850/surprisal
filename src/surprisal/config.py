@@ -28,6 +28,7 @@ class AgentsConfig:
     max_turns: int = 20
     code_attempts: int = 6
     revision_attempts: int = 1
+    generator_timeout: int = 180  # seconds, longer when literature search is active
 
 
 @dataclass

@@ -48,6 +48,33 @@ async def check_codex() -> bool:
         return False
 
 
+@dataclass
+class LiteratureStatus:
+    provider: str  # "alphaxiv", "huggingface"
+
+    @property
+    def has_semantic_search(self) -> bool:
+        return self.provider == "alphaxiv"
+
+
+async def detect_literature_provider() -> LiteratureStatus:
+    """Detect which literature search provider is available."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "mcp", "list",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+        if b"alphaxiv" in stdout:
+            logger.info("Literature: alphaxiv MCP connected (semantic search + paper Q&A)")
+            return LiteratureStatus(provider="alphaxiv")
+    except (FileNotFoundError, asyncio.TimeoutError):
+        pass
+    logger.info("Literature: using HuggingFace Papers API (public, no semantic search)")
+    return LiteratureStatus(provider="huggingface")
+
+
 async def detect_providers() -> ProviderStatus:
     """Detect which agent providers are available."""
     claude, codex = await asyncio.gather(check_claude(), check_codex())
