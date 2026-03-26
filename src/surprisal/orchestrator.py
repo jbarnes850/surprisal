@@ -6,7 +6,7 @@ from surprisal.config import AutoDiscoveryConfig
 from surprisal.db import Database
 from surprisal.mcts import select_node, backpropagate, max_children
 from surprisal.models import Node
-from surprisal.providers import ProviderStatus, detect_providers
+from surprisal.providers import LiteratureStatus, ProviderStatus, detect_literature_provider, detect_providers
 from surprisal.workspace import create_workspace, assign_branch_id, write_branch_context, write_claude_md
 
 logger = logging.getLogger("surprisal")
@@ -48,6 +48,9 @@ async def run_exploration(
     if not providers.any_available:
         return {"status": "error", "message": "No agent providers available"}
 
+    # Detect literature search provider
+    literature_provider = await detect_literature_provider()
+
     # Count completed nodes for any exploration
     all_nodes = db.execute("SELECT COUNT(*) FROM nodes WHERE status IN ('verified', 'failed')").fetchone()[0]
     remaining = budget - all_nodes
@@ -72,7 +75,7 @@ async def run_exploration(
         asyncio.create_task(
             worker_loop(db, exploration_dir, selection_lock, counter,
                         shutdown, c_explore, config, root_id, domain,
-                        providers)
+                        providers, literature_provider)
         )
         for _ in range(concurrency)
     ]
@@ -101,6 +104,7 @@ async def worker_loop(
     root_id: str,
     domain: str,
     providers: ProviderStatus | None = None,
+    literature_provider: LiteratureStatus | None = None,
 ) -> None:
     """Per-worker loop: select -> expand -> execute -> backpropagate."""
     import uuid
@@ -159,6 +163,7 @@ async def worker_loop(
                 domain=domain,
                 branch_path=branch_path,
                 providers=providers,
+                literature_provider=literature_provider,
             )
         except Exception as e:
             logger.error(f"FSM error for node {child_id}: {e}")

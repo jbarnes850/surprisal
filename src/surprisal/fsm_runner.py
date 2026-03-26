@@ -16,7 +16,7 @@ from surprisal.db import Database
 from surprisal.fsm import select_next_state, FSMResponse
 from surprisal.models import Node, BeliefSample
 from surprisal.bayesian import compute_surprisal
-from surprisal.providers import ProviderStatus
+from surprisal.providers import LiteratureStatus, ProviderStatus
 from surprisal.workspace import get_experiment_dir
 
 logger = logging.getLogger("surprisal")
@@ -92,6 +92,7 @@ async def run_live_fsm(
     domain: str,
     branch_path: list[Node],
     providers: ProviderStatus | None = None,
+    literature_provider: LiteratureStatus | None = None,
 ) -> bool:
     """Run the full FSM for a single node with real agent calls.
 
@@ -163,9 +164,35 @@ async def run_live_fsm(
 
         # ── Experiment Generator (Claude) ──
         if state == "experiment_generator":
+            # IMPORTANT: The generator must NOT use no_tools=True because it needs
+            # WebFetch for the HuggingFace fallback path when alphaxiv is unavailable.
+            # See spec Section 6.3.
+
+            # Forward user's MCP config for paper search
+            gen_extra_args = []
+            if literature_provider and literature_provider.provider == "alphaxiv":
+                claude_json = Path.home() / ".claude.json"
+                if claude_json.exists():
+                    gen_extra_args = ["--mcp-config", str(claude_json)]
+
+            # Build literature search instructions (conditional on provider)
+            lit_instructions = (
+                "STEP 1: Search for 2-3 papers related to this branch's topic.\n"
+                "STEP 2: Read their limitations or open problems.\n"
+                "STEP 3: Identify a specific gap to test.\n"
+                "STEP 4: Propose a hypothesis targeting that gap.\n"
+            )
+            if not (literature_provider and literature_provider.has_semantic_search):
+                lit_instructions += (
+                    "\nTo find papers, use WebFetch:\n"
+                    "- Search: fetch https://huggingface.co/api/daily_papers to find recent papers\n"
+                    "- Read: fetch https://huggingface.co/papers/{arxiv_id}.md for full content\n"
+                )
+
             prompt = (
                 f"Domain: {domain}\n\n"
                 f"Branch history:\n{branch_context}\n\n"
+                f"Literature search:\n{lit_instructions}\n\n"
                 "Propose a new hypothesis and a SIMPLE experiment plan.\n"
                 "CRITICAL CONSTRAINTS:\n"
                 "- The experiment MUST be 10-30 lines of Python. NOT more.\n"
@@ -177,7 +204,8 @@ async def run_live_fsm(
                 "- Think 'one scipy.stats function call on generated data' — not a simulation framework.\n\n"
                 "Respond with JSON: {{\"hypothesis\": \"...\", \"context\": \"...\", "
                 "\"variables\": [...], \"relationships\": [...], "
-                "\"experiment_plan\": \"...\"}}"
+                "\"experiment_plan\": \"...\", "
+                "\"cited_papers\": [{{\"arxiv_id\": \"...\", \"title\": \"...\", \"gap\": \"...\"}}]}}"
             )
             sys_prompt = str(_prompts_dir() / "experiment_generator.md")
             result = await research_agent.invoke(
@@ -185,12 +213,14 @@ async def run_live_fsm(
                 system_prompt_file=sys_prompt,
                 output_format="text",
                 cwd=str(workspace),
-                timeout=config.sandbox.timeout,
+                timeout=config.agents.generator_timeout,
+                extra_args=gen_extra_args,
             )
             logger.info(f"  Generator exit={result.exit_code}, len={len(result.raw)}")
             data = _extract_json(result)
             hypothesis = data.get("hypothesis", f"Auto-generated hypothesis at depth {node.depth}")
             experiment_plan = data.get("experiment_plan", "Analyze statistical patterns in the data")
+            cited_papers = json.dumps(data.get("cited_papers", []))
 
             db.update_node(node_id,
                 hypothesis=hypothesis,
@@ -198,6 +228,7 @@ async def run_live_fsm(
                 context=data.get("context", ""),
                 variables=json.dumps(data.get("variables", [])),
                 relationships=json.dumps(data.get("relationships", [])),
+                cited_papers=cited_papers,
             )
             (exp_dir / "plan.md").write_text(experiment_plan)
             last_response = FSMResponse(error=False, data=data)
