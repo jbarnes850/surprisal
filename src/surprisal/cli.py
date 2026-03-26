@@ -134,7 +134,7 @@ def explore(budget, concurrency, exp_id, c_explore, dry_run):
         db=db, exploration_dir=exp_dir, budget=budget,
         concurrency=concurrency, c_explore=c_explore,
         config=cfg, root_id=root[0], domain=exp.domain,
-        providers=providers,
+        providers=providers, literature_provider=literature,
     ))
     db.close()
     click.echo(json.dumps(result, indent=2))

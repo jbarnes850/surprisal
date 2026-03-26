@@ -40,6 +40,7 @@ async def run_exploration(
     root_id: str,
     domain: str,
     providers: ProviderStatus | None = None,
+    literature_provider: LiteratureStatus | None = None,
 ) -> dict:
     """Main exploration loop -- spawns worker pool, handles shutdown."""
     # Detect available providers if not passed in
@@ -48,8 +49,9 @@ async def run_exploration(
     if not providers.any_available:
         return {"status": "error", "message": "No agent providers available"}
 
-    # Detect literature search provider
-    literature_provider = await detect_literature_provider()
+    # Detect literature search provider if not passed in
+    if literature_provider is None:
+        literature_provider = await detect_literature_provider()
 
     # Count completed nodes for any exploration
     all_nodes = db.execute("SELECT COUNT(*) FROM nodes WHERE status IN ('verified', 'failed')").fetchone()[0]
