@@ -1,7 +1,7 @@
 """Live FSM execution — calls real Claude/Codex/Docker agents.
 
 This module implements the full discovery agent pipeline for a single MCTS node:
-  experiment_generator → programmer → executor → analyst → reviewer → hypothesis → belief
+  experiment_generator → runner → analyst → reviewer → hypothesis → belief
 """
 import json
 import logging
@@ -10,7 +10,8 @@ from pathlib import Path
 from surprisal.agents.base import AgentResult
 from surprisal.agents.claude import ClaudeAgent
 from surprisal.agents.codex import CodexAgent
-from surprisal.agents.docker import DockerSandbox
+from surprisal.agents.backends import create_backend, detect_gpu
+from surprisal.agents.experiment_container import ExperimentContainer
 from surprisal.config import AutoDiscoveryConfig
 from surprisal.db import Database
 from surprisal.fsm import select_next_state, FSMResponse
@@ -125,12 +126,8 @@ async def run_live_fsm(
         logger.error("No agent providers available")
         db.update_node(node_id, status="failed", virtual_loss=0)
         return False
-    sandbox = DockerSandbox(
-        memory=config.sandbox.memory_limit,
-        cpus=config.sandbox.cpu_limit,
-        timeout=config.sandbox.timeout,
-        network=config.sandbox.network,
-    )
+    # Auto-detect GPU for backend selection (runs once per FSM execution)
+    _gpu_available = await detect_gpu() if config.sandbox.backend == "auto" else None
 
     node = db.get_node(node_id)
     exp_dir = get_experiment_dir(workspace, node_id)
@@ -237,58 +234,46 @@ async def run_live_fsm(
             (exp_dir / "plan.md").write_text(experiment_plan)
             last_response = FSMResponse(error=False, data=data)
 
-        # ── Experiment Programmer (Codex/Claude) ──
-        elif state == "experiment_programmer":
-            # If this is a retry (coming from analyst), increment failure count
+        # ── Experiment Runner (agent inside container) ──
+        elif state == "experiment_runner":
             if last_response and last_response.error:
                 node.fsm_failure_count += 1
                 db.update_node(node_id, fsm_failure_count=node.fsm_failure_count)
             feedback = ""
             if last_response and last_response.feedback:
-                feedback = f"\n\nPrevious attempt feedback: {last_response.feedback}"
+                feedback = f"\nPrevious attempt feedback: {last_response.feedback}"
 
-            # Truncate plan to avoid CLI argument length issues
             plan_summary = experiment_plan[:800]
-            prompt = (
-                f"Write a self-contained Python script. Output ONLY code.\n"
-                f"Task: {plan_summary}\n{feedback}\n"
-                "Libraries: numpy scipy pandas sklearn matplotlib statsmodels. "
-                "No network. Print results to stdout."
+            runner_prompt = (
+                f"Run this experiment inside your environment.\n"
+                f"Plan: {plan_summary}\n{feedback}\n"
+                "Write the code, execute it, debug if needed. "
+                "Write results to /work/results.json."
             )
-            # Programmer outputs code as text — no tools needed
-            # The FSM saves the code to experiment.py
-            prog_agent = ClaudeAgent(model=config.agents.claude_model, max_turns=3)
-            result = await prog_agent.invoke(
-                prompt=prompt,
-                output_format="text",
-                cwd=str(exp_dir),
-                timeout=60,
-                no_tools=True,
+
+            backend = create_backend(config.sandbox, config.credentials, gpu_available=_gpu_available)
+            result = await backend.execute(
+                experiment_prompt=runner_prompt,
+                workspace=exp_dir,
+                config=config.sandbox,
             )
-            logger.info(f"  Programmer exit={result.exit_code}, len={len(result.raw)}")
+            logger.info(f"  Runner exit={result.exit_code}, len={len(result.raw)}")
 
-            # Extract code from result
-            code = result.raw.strip()
-            # Strip markdown code fences if present
-            if code.startswith("```python"):
-                code = code[len("```python"):].strip()
-            if code.startswith("```"):
-                code = code[3:].strip()
-            if code.endswith("```"):
-                code = code[:-3].strip()
-
-            experiment_code = code
-            (exp_dir / "experiment.py").write_text(code)
-            last_response = FSMResponse(error=False)
-
-        # ── Code Executor (Docker) ──
-        elif state == "code_executor":
-            result = await sandbox.execute(str(exp_dir))
-            logger.info(f"  Executor exit={result.exit_code}, len={len(result.raw)}")
             experiment_output = result.raw
+            results_file = exp_dir / "results.json"
+            if results_file.exists():
+                try:
+                    results_data = json.loads(results_file.read_text())
+                    experiment_code = results_data.get("code", "")
+                    experiment_output = results_data.get("stdout", result.raw)
+                except (json.JSONDecodeError, KeyError):
+                    experiment_code = ""
+            else:
+                experiment_code = (exp_dir / "experiment.py").read_text() if (exp_dir / "experiment.py").exists() else ""
+
             db.update_node(node_id, experiment_exit_code=result.exit_code)
 
-            if DockerSandbox.is_infra_error(result.exit_code):
+            if ExperimentContainer.is_infra_error(result.exit_code):
                 last_response = FSMResponse(error=True, exit_code=result.exit_code)
             else:
                 last_response = FSMResponse(
