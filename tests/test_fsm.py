@@ -6,36 +6,32 @@ def test_start_goes_to_generator():
     assert select_next_state("start", None, failure_count=0, revision_count=0) == "experiment_generator"
 
 
-def test_generator_goes_to_programmer():
-    assert select_next_state("experiment_generator", FSMResponse(error=False), 0, 0) == "experiment_programmer"
+def test_generator_goes_to_runner():
+    assert select_next_state("experiment_generator", FSMResponse(error=False), 0, 0) == "experiment_runner"
 
 
-def test_programmer_goes_to_executor():
-    assert select_next_state("experiment_programmer", FSMResponse(error=False), 0, 0) == "code_executor"
+def test_runner_goes_to_analyst():
+    assert select_next_state("experiment_runner", FSMResponse(error=False, exit_code=0), 0, 0) == "experiment_analyst"
 
 
-def test_executor_goes_to_analyst():
-    assert select_next_state("code_executor", FSMResponse(error=False, exit_code=0), 0, 0) == "experiment_analyst"
+def test_runner_infra_error_125():
+    assert select_next_state("experiment_runner", FSMResponse(error=True, exit_code=125), 0, 0) == "FAIL"
 
 
-def test_executor_infra_error_125():
-    assert select_next_state("code_executor", FSMResponse(error=True, exit_code=125), 0, 0) == "FAIL"
+def test_runner_infra_error_126():
+    assert select_next_state("experiment_runner", FSMResponse(error=True, exit_code=126), 0, 0) == "FAIL"
 
 
-def test_executor_infra_error_126():
-    assert select_next_state("code_executor", FSMResponse(error=True, exit_code=126), 0, 0) == "FAIL"
+def test_runner_infra_error_127():
+    assert select_next_state("experiment_runner", FSMResponse(error=True, exit_code=127), 0, 0) == "FAIL"
 
 
-def test_executor_infra_error_127():
-    assert select_next_state("code_executor", FSMResponse(error=True, exit_code=127), 0, 0) == "FAIL"
+def test_runner_code_error_goes_to_analyst():
+    assert select_next_state("experiment_runner", FSMResponse(error=True, exit_code=1), 0, 0) == "experiment_analyst"
 
 
-def test_executor_code_error_goes_to_analyst():
-    assert select_next_state("code_executor", FSMResponse(error=True, exit_code=1), 0, 0) == "experiment_analyst"
-
-
-def test_analyst_error_retries_programmer():
-    assert select_next_state("experiment_analyst", FSMResponse(error=True), failure_count=2, revision_count=0) == "experiment_programmer"
+def test_analyst_error_retries_runner():
+    assert select_next_state("experiment_analyst", FSMResponse(error=True), failure_count=2, revision_count=0) == "experiment_runner"
 
 
 def test_analyst_error_at_max_fails():
@@ -58,8 +54,8 @@ def test_reviewer_success_goes_to_hypothesis_generator():
     assert select_next_state("experiment_reviewer", FSMResponse(error=False), 0, 0) == "hypothesis_generator"
 
 
-def test_reviser_goes_to_programmer():
-    assert select_next_state("experiment_reviser", FSMResponse(error=False), 0, 0) == "experiment_programmer"
+def test_reviser_goes_to_runner():
+    assert select_next_state("experiment_reviser", FSMResponse(error=False), 0, 0) == "experiment_runner"
 
 
 def test_hypothesis_generator_goes_to_belief():
@@ -75,22 +71,18 @@ def test_unknown_state_goes_to_fail():
 
 
 def test_full_happy_path():
-    """Walk through the entire FSM happy path."""
     states = []
     state = "start"
     while state not in ("COMPLETE", "FAIL"):
         state = select_next_state(state, FSMResponse(error=False, exit_code=0), 0, 0)
         states.append(state)
     assert states == [
-        "experiment_generator", "experiment_programmer", "code_executor",
+        "experiment_generator", "experiment_runner",
         "experiment_analyst", "experiment_reviewer", "hypothesis_generator",
         "belief_elicitation", "COMPLETE",
     ]
 
 
 def test_failure_count_cumulative():
-    """Verify failure count is checked cumulatively, not reset."""
-    # 5 failures should still allow retry
-    assert select_next_state("experiment_analyst", FSMResponse(error=True), failure_count=5, revision_count=0) == "experiment_programmer"
-    # 6 failures should FAIL
+    assert select_next_state("experiment_analyst", FSMResponse(error=True), failure_count=5, revision_count=0) == "experiment_runner"
     assert select_next_state("experiment_analyst", FSMResponse(error=True), failure_count=6, revision_count=0) == "FAIL"
