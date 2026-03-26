@@ -1,0 +1,22 @@
+FROM nvidia/cuda:13.0-runtime-ubuntu24.04
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip python3-venv \
+    curl git ca-certificates \
+    nodejs npm && \
+    rm -rf /var/lib/apt/lists/*
+
+# ML stack
+RUN pip3 install --no-cache-dir --break-system-packages \
+    torch torchvision torchaudio \
+    transformers trl datasets accelerate \
+    wandb \
+    numpy scipy pandas scikit-learn matplotlib \
+    statsmodels seaborn networkx sympy
+
+# Agent runtimes
+RUN npm install -g @anthropic-ai/claude-code && \
+    npm install -g codex
+
+WORKDIR /work
