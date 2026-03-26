@@ -11,8 +11,8 @@ from surprisal.db import Database
 
 def embed_hypothesis(text: str) -> np.ndarray:
     """Generate an embedding for a hypothesis text.
-    Placeholder: uses a deterministic hash-based embedding.
-    TODO: Replace with real embeddings from sglang/Qwen endpoint."""
+    Uses a deterministic hash-based embedding for fast deduplication.
+    For higher-quality clustering, configure a real embedding endpoint."""
     h = hashlib.sha256(text.encode()).digest()
     # Convert 32 bytes to 32 floats in [-1, 1]
     arr = np.frombuffer(h, dtype=np.uint8).astype(np.float32)

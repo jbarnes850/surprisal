@@ -19,7 +19,9 @@ class CodexAgent:
         return cmd
 
     async def invoke(
-        self, prompt: str, cwd: Optional[str] = None, timeout: int = 600
+        self, prompt: str, cwd: Optional[str] = None, timeout: int = 600,
+        output_format: str = "text", system_prompt_file: Optional[str] = None,
+        no_tools: bool = False, extra_args: list[str] = None, **kwargs,
     ) -> AgentResult:
         # Use -o to capture the last message cleanly
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:

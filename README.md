@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/banner.jpg" alt="Surprisal — open-ended scientific discovery via bayesian surprise" width="100%">
+  <img src="public/banner.jpg" alt="Surprisal: open-ended scientific discovery via Bayesian surprise" width="100%">
 </p>
 
 <p align="center">
@@ -11,9 +11,10 @@
 
 Describe what you're curious about. Get back ranked scientific discoveries.
 
-Surprisal takes a research question in plain English, autonomously generates hypotheses, writes and executes experiments in sandboxed environments, and ranks discoveries by how much they shift the model's own beliefs. No datasets, no configuration, no code required.
+Surprisal takes a research question in plain English, autonomously generates hypotheses grounded in recent literature, writes and executes experiments on real data and models, and ranks discoveries by how much they shift the model's own beliefs.
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/jbarnes850/surprisal/main/install.sh | bash
 surprisal init --domain "neural scaling laws" --seed "your hypothesis here"
 surprisal explore --budget 20
 surprisal export --top 5
@@ -21,13 +22,20 @@ surprisal export --top 5
 
 ## Quick start
 
+**One-line install** (handles dependencies, GPU detection, Docker image, and credentials):
+
 ```bash
-# Install
+curl -fsSL https://raw.githubusercontent.com/jbarnes850/surprisal/main/install.sh | bash
+```
+
+Or manually:
+
+```bash
 git clone https://github.com/jbarnes850/surprisal && cd surprisal
 uv sync
 
-# Build the sandbox image (network-isolated Python environment)
-docker build -t surprisal-sandbox:latest sandbox/
+# Build the GPU-enabled sandbox image
+docker build -t surprisal-gpu:latest -f sandbox/Dockerfile.gpu sandbox/
 
 # Initialize an exploration
 uv run surprisal init \
@@ -71,20 +79,22 @@ uv run surprisal export --top 3 --format json | jq '.hypotheses[].hypothesis'
 # "Attention head scaling exhibits phase transitions at critical compute thresholds..."
 ```
 
-The system generated 20 hypotheses, ran experiments in Docker sandboxes, and identified 4 where the experimental evidence genuinely surprised the model -- these are the discoveries worth investigating further.
+The system generated 20 hypotheses, ran experiments in GPU-accelerated containers, and identified 4 where the experimental evidence genuinely surprised the model. These are the discoveries worth investigating further.
 
 ## How it works
 
 Each MCTS iteration:
 
-1. **Selection** -- UCT picks the most promising branch to explore
-2. **Expansion** -- Claude generates a hypothesis and experiment plan
-3. **Execution** -- Code is written, run in a Docker sandbox, analyzed, and reviewed by a multi-agent FSM
-4. **Belief elicitation** -- The model is asked "is this hypothesis true?" before and after seeing evidence (n=30 samples each)
-5. **Bayesian surprise** -- KL divergence between prior and posterior Beta distributions measures belief shift
-6. **Backpropagation** -- Surprisal scores flow up the tree, guiding future exploration toward high-information regions
+1. **Selection.** UCT picks the most promising branch to explore.
+2. **Literature search.** The generator searches recent papers (via alphaxiv or HuggingFace Papers API) to identify gaps and ground new hypotheses in the literature.
+3. **Experiment design.** Claude proposes a hypothesis and experiment plan, citing the papers that motivated it.
+4. **Execution.** An agent runs inside a GPU-enabled Docker container, writing and executing code against real HuggingFace datasets or synthetic data. The agent self-debugs failures and logs metrics to W&B if configured.
+5. **Analysis and review.** A separate agent analyzes the output, comparing against prior W&B runs where available. A reviewer validates the results.
+6. **Belief elicitation.** The model is asked "is this hypothesis true?" before and after seeing evidence (n=30 samples each).
+7. **Bayesian surprise.** KL divergence between prior and posterior Beta distributions measures belief shift.
+8. **Backpropagation.** Surprisal scores flow up the tree, guiding future exploration toward high-information regions.
 
-The system optimizes for **variance** -- it seeks hypotheses where the model genuinely doesn't know what to expect, following Shi & Evans (2023) finding that surprising research combinations correlate with scientific impact.
+The system optimizes for **variance**: it seeks hypotheses where the model genuinely does not know what to expect, following Shi & Evans (2023) on the relationship between surprising research combinations and scientific impact.
 
 ## Commands
 
@@ -107,45 +117,62 @@ MCTS Engine (deterministic Python, never calls LLMs directly)
     |
     +-- Persistence (SQLite WAL + filesystem workspaces)
     |
+    +-- Backend Abstraction (SandboxBackend protocol)
+    |    +-- LocalGPUContainer (default: Claude agent runs inside Docker with GPU)
+    |    +-- HF Jobs (cloud scale-out for training beyond local GPU)
+    |
     +-- Agent Dispatcher
-         +-- Claude (hypothesis generation, belief elicitation) via claude -p
-         +-- Codex (code writing, analysis, review) via codex exec
-         +-- Docker (sandboxed experiment execution, --network=none)
+    |    +-- Claude Opus: hypothesis generation, literature search, belief elicitation
+    |    +-- Codex or Claude Sonnet: experiment analysis, review, revision
+    |    +-- Claude (inside container): experiment execution with self-debugging
+    |
+    +-- MCP Tools (injected into containers at runtime)
+         +-- W&B (experiment tracking and run comparison)
+         +-- HuggingFace (dataset access, model hub)
+         +-- alphaxiv (semantic paper search)
 ```
 
 **Discovery agent FSM (per hypothesis node):**
 ```
-generator -> programmer -> Docker executor -> analyst -> reviewer
-                                                          |
-                                               [reject] reviser -> programmer (retry, up to 6x)
-                                               [approve] hypothesis_generator -> belief_elicitation (x60)
+generator (Opus) -> runner (agent inside container) -> analyst (Codex/Sonnet) -> reviewer (Codex/Sonnet)
+                                                                                    |
+                                                                         [reject] reviser (Codex/Sonnet) -> runner (retry, up to 6x)
+                                                                         [approve] hypothesis_generator (Opus) -> belief_elicitation (Opus, x60)
 ```
 
 ## Key concepts
 
-- **Bayesian surprise**: D_KL(posterior || prior) -- how much experimental evidence shifts the model's beliefs about a hypothesis
-- **Belief shift**: Did the expected belief cross the 0.5 decision boundary? (model changed its mind from "likely true" to "likely false" or vice versa)
-- **Progressive widening**: Tree breadth grows as sqrt(visits), preventing premature width while allowing exploration to broaden over time
-- **Virtual loss**: Parallel workers avoid selecting the same branch simultaneously via temporary visit count inflation
-- **Heterogeneous agents**: Claude handles research/reasoning, Codex handles code/analysis -- cross-model feedback prevents echo chambers
+- **Bayesian surprise.** D_KL(posterior || prior), measuring how much experimental evidence shifts the model's beliefs about a hypothesis.
+- **Belief shift.** Whether the expected belief crosses the 0.5 decision boundary. The model changed its mind from "likely true" to "likely false" or vice versa.
+- **Progressive widening.** Tree breadth grows as sqrt(visits), preventing premature width while allowing exploration to broaden over time.
+- **Virtual loss.** Parallel workers avoid selecting the same branch simultaneously via temporary visit count inflation.
+- **Literature grounding.** Every hypothesis cites the recent papers that motivated it. The generator searches alphaxiv (semantic search) or HuggingFace Papers API (public fallback) for 2024-2026 work.
+- **Agent-in-container execution.** The experiment runner operates inside a GPU-enabled Docker container with full tool access: Bash, file I/O, MCP tools for W&B and HuggingFace. It writes code, executes it, and self-debugs failures before returning results.
 
 ## Requirements
 
 - Python 3.12+
-- [Claude CLI](https://claude.ai/install.sh) authenticated (`claude auth login`) -- **required**
-- [Codex CLI](https://github.com/openai/codex) -- optional (heterogeneous agent support planned)
-- Docker (for sandbox execution)
+- [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) authenticated (`claude auth login`)
+- Docker with [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (for GPU experiments)
 - [`uv`](https://docs.astral.sh/uv/) package manager
 
-> Claude is the primary agent provider. Codex integration for cross-model feedback is under development.
+Optional:
+
+- [Codex CLI](https://github.com/openai/codex) for heterogeneous agent mode (Codex handles analysis/review, Claude handles research/belief)
+- [W&B](https://wandb.ai/) account for experiment tracking
+- [HuggingFace](https://huggingface.co/) token for dataset access and HF Jobs cloud GPU
+- [alphaxiv MCP](https://www.alphaxiv.org/docs/mcp) for semantic paper search
 
 ## Configuration
 
 ```bash
 uv run surprisal config --show
-uv run surprisal config --set mcts.c_explore 2.0       # more exploration
-uv run surprisal config --set mcts.belief_samples 30    # production (60 calls/node)
-uv run surprisal config --set agents.claude_model opus  # use Opus for research
+uv run surprisal config --set mcts.c_explore 2.0         # more exploration
+uv run surprisal config --set mcts.belief_samples 30      # production (60 calls/node)
+uv run surprisal config --set agents.claude_model opus    # use Opus for research
+uv run surprisal config --set sandbox.gpu true            # enable GPU passthrough
+uv run surprisal config --set credentials.wandb_api_key YOUR_KEY
+uv run surprisal config --set credentials.hf_token YOUR_TOKEN
 ```
 
 | Setting | Default | Description |
@@ -155,7 +182,12 @@ uv run surprisal config --set agents.claude_model opus  # use Opus for research
 | `mcts.max_depth` | 30 | Maximum hypothesis tree depth |
 | `mcts.dedup_interval` | 50 | Run deduplication every N nodes |
 | `agents.claude_model` | opus | Model for Claude roles |
-| `sandbox.timeout` | 600 | Docker execution timeout (seconds) |
+| `sandbox.backend` | auto | Experiment backend: `auto`, `local`, or `hf_jobs` |
+| `sandbox.gpu` | true | Enable GPU passthrough for local container |
+| `sandbox.timeout` | 1800 | Container execution timeout (seconds) |
+| `sandbox.hf_flavor` | a10g-small | HF Jobs GPU flavor (when using cloud backend) |
+| `credentials.wandb_api_key` | | W&B API key for experiment tracking |
+| `credentials.hf_token` | | HuggingFace token for datasets and HF Jobs |
 
 ## References
 

@@ -111,15 +111,15 @@ async def run_live_fsm(
         research_agent = None
 
     if providers.codex_available and providers.claude_available:
-        # Heterogeneous: Codex for code/analysis roles
-        code_agent = ClaudeAgent(model="sonnet", max_turns=config.agents.max_turns)
-        # TODO: swap to real CodexAgent when codex exec subprocess is stable
+        # Heterogeneous: Codex for code/analysis, Claude for research/belief
+        code_agent = CodexAgent(model=config.agents.codex_model)
     elif providers.claude_available:
-        # Claude-only: use Claude for everything
+        # Claude-only: use Sonnet for code/analysis roles
         code_agent = ClaudeAgent(model="sonnet", max_turns=config.agents.max_turns)
     elif providers.codex_available:
-        # Codex-only: not yet supported -- Codex subprocess needs work
-        logger.error("Codex-only mode not yet supported")
+        # Codex-only: Codex handles code/analysis, but no research agent for
+        # hypothesis generation and belief elicitation (these require Claude)
+        logger.error("Codex-only mode requires Claude for hypothesis generation and belief elicitation")
         db.update_node(node_id, status="failed", virtual_loss=0)
         return False
     else:
