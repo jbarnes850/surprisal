@@ -125,6 +125,11 @@ def explore(budget, concurrency, exp_id, c_explore, dry_run):
     else:
         click.echo("Providers: Claude detected (Codex not found -- single-provider mode).")
 
+    from surprisal.providers import detect_literature_provider
+    literature = asyncio.run(detect_literature_provider())
+    click.echo(f"Literature: {literature.provider}" +
+               (" (semantic search)" if literature.has_semantic_search else " (public API)"))
+
     result = asyncio.run(run_exploration(
         db=db, exploration_dir=exp_dir, budget=budget,
         concurrency=concurrency, c_explore=c_explore,
@@ -173,6 +178,12 @@ def status(tree, as_json, exp_id):
         click.echo(f"Nodes: {total} total, {verified} verified, {expanding} expanding, {failed} failed")
         click.echo(f"Surprisals: {surprisals} found ({surprisals/max(verified,1)*100:.1f}% rate)")
         click.echo(f"Tree depth: max {max_depth}")
+
+        papers_count = db.execute(
+            "SELECT COUNT(*) FROM nodes WHERE cited_papers IS NOT NULL AND cited_papers != '[]' AND cited_papers != 'null'"
+        ).fetchone()[0]
+        if papers_count:
+            click.echo(f"Literature-grounded: {papers_count} hypotheses with citations")
 
     if tree:
         _print_tree(db, None, 0)
