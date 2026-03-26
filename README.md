@@ -9,9 +9,15 @@
   <a href="https://arxiv.org/abs/2602.07670"><img src="https://img.shields.io/badge/arXiv-2602.07670-b31b1b?style=flat-square" alt="arXiv"></a>
 </p>
 
-Open-ended scientific discovery via Bayesian surprise. Uses MCTS to explore a hypothesis tree, dispatching Claude and Codex agents to generate experiments, execute code in Docker sandboxes, and measure belief shifts.
+Describe what you're curious about. Get back ranked scientific discoveries.
 
-Based on [AutoDiscovery (NeurIPS 2025)](https://github.com/allenai/autodiscovery) by Agarwal et al., with extensions for parallel heterogeneous agents and learned surprisal prediction.
+Surprisal takes a research question in plain English, autonomously generates hypotheses, writes and executes experiments in sandboxed environments, and ranks discoveries by how much they shift the model's own beliefs. No datasets, no configuration, no code required.
+
+```bash
+surprisal init --domain "neural scaling laws" --seed "your hypothesis here"
+surprisal explore --budget 20
+surprisal export --top 5
+```
 
 ## Quick start
 
