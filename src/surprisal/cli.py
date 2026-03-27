@@ -115,13 +115,23 @@ def _run_explore_command(
         db.close()
         return
 
-    from surprisal.providers import detect_literature_provider, detect_providers
+    from surprisal.providers import detect_literature_provider, detect_providers, ensure_runner_auth
 
     providers = asyncio.run(detect_providers())
     if not providers.claude_available:
         db.close()
         extra = {"codex_available": providers.codex_available}
         _emit_error("Claude CLI is required. Run 'claude auth login' first.", as_json=as_json, extra=extra)
+
+    # Ensure Docker runner can authenticate Claude inside the container
+    if cfg.sandbox.backend in ("auto", "local"):
+        from surprisal.config import save_config
+        if not ensure_runner_auth(config_path=get_config_path(), save_config_fn=save_config, cfg=cfg):
+            db.close()
+            _emit_error(
+                "Docker runner auth unavailable. Run 'claude setup-token' and try again.",
+                as_json=as_json,
+            )
 
     literature = asyncio.run(detect_literature_provider())
     progress_callback = None

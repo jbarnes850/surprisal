@@ -10,6 +10,9 @@ from surprisal.providers import LiteratureStatus, ProviderStatus
 
 
 def _patch_cli_explore(monkeypatch, *, iterations: int = 1) -> None:
+    # Set a fake token so ensure_runner_auth doesn't prompt during tests
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-test-fake-token")
+
     async def _fake_detect_providers():
         return ProviderStatus(claude_available=True, codex_available=True)
 
@@ -183,6 +186,7 @@ class TestCLIIntegration:
 
     def test_explore_smoke_creates_verified_child_node(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SURPRISAL_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-test-fake-token")
 
         async def _fake_detect_providers():
             return ProviderStatus(claude_available=True, codex_available=True)

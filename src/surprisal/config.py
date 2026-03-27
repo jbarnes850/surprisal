@@ -52,6 +52,7 @@ class SandboxConfig:
 class CredentialsConfig:
     wandb_api_key: str = ""
     hf_token: str = ""
+    claude_oauth_token: str = ""
 
 
 @dataclass

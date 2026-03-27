@@ -1,6 +1,7 @@
 """Auto-detect available agent providers and route roles accordingly."""
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 
 logger = logging.getLogger("surprisal")
@@ -73,6 +74,82 @@ async def detect_literature_provider() -> LiteratureStatus:
         pass
     logger.info("Literature: using HuggingFace Papers API (public, no semantic search)")
     return LiteratureStatus(provider="huggingface")
+
+
+async def check_claude_auth_method() -> str | None:
+    """Return the Claude auth method ('claude.ai' or 'apiKey') or None."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "auth", "status", "--json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+        if proc.returncode != 0:
+            return None
+        import json
+        data = json.loads(stdout)
+        return data.get("authMethod")
+    except (FileNotFoundError, asyncio.TimeoutError, Exception):
+        return None
+
+
+def ensure_runner_auth(config_path=None, save_config_fn=None, cfg=None) -> bool:
+    """Ensure CLAUDE_CODE_OAUTH_TOKEN is set for Docker runner auth.
+
+    If the user is subscription-backed and the token is missing from the
+    environment, check the config for a cached token. If not cached, prompt
+    the user once and cache it.
+
+    Returns True if auth is available, False if not.
+    """
+    # Already in environment — nothing to do
+    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        return True
+    # API-key auth doesn't need the token
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return True
+
+    # Check config for cached token
+    if cfg and cfg.credentials.claude_oauth_token:
+        os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = cfg.credentials.claude_oauth_token
+        return True
+
+    # Detect if subscription-backed
+    auth_method = asyncio.run(check_claude_auth_method())
+    if auth_method != "claude.ai":
+        return True  # API-key auth or unknown — let it proceed
+
+    # Subscription auth without token — prompt the user
+    import sys
+    print(
+        "\n"
+        "Claude subscription auth detected, but the Docker runner needs an OAuth token.\n"
+        "Run this once in your terminal:\n"
+        "\n"
+        "  claude setup-token\n"
+        "\n"
+        "Then paste the token here (starts with sk-ant-oat01-).",
+        file=sys.stderr,
+    )
+    try:
+        token = input("Token: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return False
+
+    if not token or not token.startswith("sk-ant-"):
+        print("Invalid token. Run 'claude setup-token' to generate one.", file=sys.stderr)
+        return False
+
+    os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = token
+
+    # Cache in config so the user never has to do this again
+    if cfg and config_path and save_config_fn:
+        cfg.credentials.claude_oauth_token = token
+        save_config_fn(cfg, config_path)
+        print(f"Token cached in {config_path} — you won't be asked again.", file=sys.stderr)
+
+    return True
 
 
 async def detect_providers() -> ProviderStatus:
