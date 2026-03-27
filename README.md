@@ -20,7 +20,7 @@ uv run surprisal export --top 5 --format md
 
 On the first local CPU run, Surprisal will print a preflight message and build `surprisal-cpu:latest` once. Later runs reuse the cached image and stream stage-level progress through generator, runner, review, and belief phases.
 
-If your Claude CLI auth is subscription-backed rather than API-key-backed, run `claude setup-token` once and export `CLAUDE_CODE_OAUTH_TOKEN` before local container runs so the runner can authenticate inside Docker.
+If your Claude CLI auth is subscription-backed rather than API-key-backed, Surprisal will prompt you once on the first run to provide a `claude setup-token` output. The token is cached in your config so you only do this once.
 
 Codex-based analysis and review stages run from per-experiment workspaces under `/tmp/.../experiments/node_*`, so the CLI invocation explicitly skips git-repo enforcement there.
 
@@ -108,7 +108,7 @@ Live config knobs:
 | `mcts.k_progressive` | `1.0` | Progressive widening coefficient |
 | `mcts.alpha_progressive` | `0.5` | Progressive widening exponent |
 | `mcts.max_depth` | `30` | Maximum tree depth |
-| `mcts.belief_samples` | `30` | Samples per prior and posterior belief phase |
+| `mcts.belief_samples` | `10` | Samples per prior and posterior belief phase (set higher for publication-grade runs) |
 | `mcts.virtual_loss` | `2` | Virtual loss applied during parallel selection |
 | `mcts.dedup_interval` | `50` | Run deduplication every N completed expansions |
 | `agents.claude_model` | `opus` | Claude model for research roles |
@@ -128,6 +128,7 @@ Live config knobs:
 | `sandbox.hf_timeout` | `2h` | HF Jobs timeout |
 | `credentials.wandb_api_key` | `""` | Optional W&B API key |
 | `credentials.hf_token` | `""` | Optional HuggingFace token |
+| `credentials.claude_oauth_token` | `""` | Cached Claude OAuth token for Docker runner (auto-prompted on first run) |
 
 ## Literature grounding
 
