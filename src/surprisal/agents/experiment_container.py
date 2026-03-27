@@ -43,8 +43,11 @@ class ExperimentContainer:
         system_prompt: Optional[str] = None,
         session_id: Optional[str] = None,
         claude_home: Optional[str] = None,
+        container_name: Optional[str] = None,
     ) -> list[str]:
         cmd = ["docker", "run", "--rm"]
+        if container_name:
+            cmd.extend(["--name", container_name])
         if self.config.gpu:
             cmd.append("--gpus=all")
         cmd.extend(["--memory", self.config.memory_limit])
@@ -102,6 +105,16 @@ class ExperimentContainer:
             shutil.copy2(host_claude_json, destination_json)
 
         return runner_claude_home
+
+    @staticmethod
+    async def kill_container(name: str) -> None:
+        """Kill and remove a container by name, if it exists."""
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "rm", "-f", name,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.communicate()
 
     @staticmethod
     def is_infra_error(exit_code: int) -> bool:
@@ -163,8 +176,10 @@ class ExperimentContainer:
         system_prompt_file: str | None = None,
         session_id: str | None = None,
         progress_callback: ProgressCallback | None = None,
+        node_id: str | None = None,
     ) -> AgentResult:
         mcp_config_path = write_mcp_config(self.credentials)
+        container_name = f"surprisal-{node_id}" if node_id else None
         try:
             self.config.image = resolve_sandbox_image(self.config.image, self.config.gpu)
             emit_progress(progress_callback, f"Runner: preparing local sandbox image `{self.config.image}`.")
@@ -181,6 +196,9 @@ class ExperimentContainer:
                     raw="runner session persistence unavailable: host Claude home not found",
                     exit_code=1,
                 )
+            # Kill any zombie container from a prior attempt for this node
+            if container_name:
+                await self.kill_container(container_name)
             cmd = self.build_run_command(
                 str(workspace),
                 mcp_config_path,
@@ -188,6 +206,7 @@ class ExperimentContainer:
                 system_prompt=system_prompt,
                 session_id=session_id,
                 claude_home=str(claude_home) if claude_home is not None else None,
+                container_name=container_name,
             )
             emit_progress(progress_callback, f"Runner: launching local sandbox container `{self.config.image}`.")
             start = time.monotonic()

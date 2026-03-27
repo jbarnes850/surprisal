@@ -35,6 +35,7 @@ class FakeBackend:
         system_prompt_file=None,
         session_id=None,
         progress_callback=None,
+        **kwargs,
     ):
         self.calls.append({
             "experiment_prompt": experiment_prompt,

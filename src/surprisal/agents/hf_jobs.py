@@ -38,6 +38,7 @@ class HFJobsSandbox:
         system_prompt_file: str | None = None,
         session_id: str | None = None,
         progress_callback: ProgressCallback | None = None,
+        node_id: str | None = None,
     ) -> AgentResult:
         model = "opus"
         agent = ClaudeAgent(model=model, max_turns=3)

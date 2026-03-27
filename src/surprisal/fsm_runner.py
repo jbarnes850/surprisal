@@ -512,6 +512,7 @@ async def run_live_fsm(
                 system_prompt_file=str(_prompts_dir() / "experiment_runner.md"),
                 session_id=runner_session_id,
                 progress_callback=progress_callback,
+                node_id=node_id,
             )
             _remember_runner_session(result)
             _record_invocation(

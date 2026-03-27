@@ -41,25 +41,33 @@ Synthetic or simulated data is acceptable only when:
 
 ## Experiment Design Standard
 
+**Start with the smallest experiment that can discriminate.** The first test of a hypothesis should use the minimum data, simplest method, and shortest execution time that produces informative evidence. If a 100-row sample distinguishes the effect, do not download 365K documents. If a logistic regression tests the claim, do not train a transformer.
+
+Scale:
+- Target execution time: under 2 minutes for the first attempt.
+- Use small dataset slices (100-1000 rows), not full datasets.
+- Download only what you need. Stream or sample rather than bulk-download.
+- If a real dataset is too large to use quickly, take a representative subsample.
+
 The plan should be:
 - faithful to the hypothesis, not merely adjacent to it,
 - specific about the resource to use when relevant (dataset name, model name, benchmark split, API, corpus, etc.),
-- sized for one runnable experiment rather than a research program,
+- sized for one bounded experiment that completes in minutes, not hours,
 - explicit about the main metric or test that determines the outcome,
 - realistic for a coding agent to implement without follow-up clarification.
 
 Prefer experiments such as:
-- evaluating a measurable pattern on a real HF dataset split,
-- comparing model behavior across benchmark slices,
-- running a targeted ablation with a public model,
-- reproducing or stress-testing a recent paper claim on accessible data,
+- evaluating a measurable pattern on a small slice of a real HF dataset,
+- comparing model behavior across a focused benchmark subset,
+- running a targeted ablation with a small public model,
+- reproducing or stress-testing a recent paper claim on a representative sample,
 - using a carefully justified simulation when the hypothesis is mechanistic.
 
 Avoid plans that are:
 - purely decorative,
 - trivially true by construction,
 - dependent on inaccessible proprietary data,
-- so broad that they become a multi-day project,
+- so broad that they require large downloads or long compute,
 - disconnected from the motivating literature gap.
 
 ## Literature Grounding (Required)
