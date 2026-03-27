@@ -5,3 +5,8 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+
+# Internal specs, plans, and handoff docs (not public)
+docs/specs/
+docs/superpowers/
+docs/handoff-*
