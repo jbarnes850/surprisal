@@ -15,7 +15,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip
 RUN npm install -g @anthropic-ai/claude-code && \
     npm install -g codex
 
-RUN useradd -m -u 1000 surprisal && \
+RUN useradd -m surprisal && \
     mkdir -p /work && \
     chown -R surprisal:surprisal /work
 
