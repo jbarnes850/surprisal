@@ -526,6 +526,8 @@ async def run_live_fsm(
             logger.info(f"  Runner exit={result.exit_code}, len={len(result.raw)}")
 
             experiment_output = result.raw
+            results_summary = ""
+            experiment_metrics = {}
             runner_feedback = ""
             runner_contract_valid = True
             results_file = exp_dir / "results.json"
@@ -554,6 +556,13 @@ async def run_live_fsm(
                         experiment_code = code_value
                         experiment_output = stdout_value
                         runner_failed = error_value
+                        # Extract structured fields (optional — older runners may not produce these)
+                        summary_value = results_data.get("results_summary", "")
+                        if isinstance(summary_value, str) and summary_value.strip():
+                            results_summary = summary_value.strip()
+                        metrics_value = results_data.get("metrics")
+                        if isinstance(metrics_value, dict):
+                            experiment_metrics = metrics_value
                         if runner_failed:
                             error_message = results_data.get("error_message", "")
                             if isinstance(error_message, str) and error_message.strip():
@@ -601,11 +610,21 @@ async def run_live_fsm(
             if stderr_path.exists():
                 stderr_text = stderr_path.read_text()[:2000]
 
+            # Prefer structured results_summary + metrics over raw stdout.
+            # Falls back to stdout tail when the runner didn't produce a summary.
+            if results_summary:
+                evidence_block = (
+                    f"Results summary:\n{results_summary}\n\n"
+                    f"Metrics:\n{json.dumps(experiment_metrics, indent=2) if experiment_metrics else 'none'}\n\n"
+                    f"Stdout (tail):\n{experiment_output[-2000:]}"
+                )
+            else:
+                evidence_block = f"Stdout:\n{experiment_output[-3000:]}"
             prompt = (
                 f"Experiment plan:\n{experiment_plan}\n\n"
                 f"Runner feedback:\n{runner_feedback or 'none'}\n\n"
                 f"Exit code: {node.experiment_exit_code}\n\n"
-                f"Stdout:\n{experiment_output[:3000]}\n\n"
+                f"{evidence_block}\n\n"
                 f"Stderr:\n{stderr_text}\n\n"
                 f"Code:\n{experiment_code[:2000]}"
             )
@@ -650,10 +669,18 @@ async def run_live_fsm(
         # ── Experiment Reviewer (Codex) ──
         elif state == "experiment_reviewer":
             sys_prompt_reviewer = str(_prompts_dir() / "experiment_reviewer.md")
+            if results_summary:
+                reviewer_evidence = (
+                    f"Results summary:\n{results_summary}\n\n"
+                    f"Metrics:\n{json.dumps(experiment_metrics, indent=2) if experiment_metrics else 'none'}\n\n"
+                    f"Execution output (tail):\n{experiment_output[-2000:]}"
+                )
+            else:
+                reviewer_evidence = f"Execution output:\n{experiment_output[-2500:]}"
             prompt = (
                 f"Hypothesis: {db.get_node(node_id).hypothesis}\n\n"
                 f"Experiment plan:\n{experiment_plan}\n\n"
-                f"Execution output:\n{experiment_output[:2500]}\n\n"
+                f"{reviewer_evidence}\n\n"
                 f"Analysis summary:\n{analysis_summary}\n\n"
                 f"Code:\n{experiment_code[:2000]}"
             )

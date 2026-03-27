@@ -50,6 +50,7 @@ After execution, write `/work/results.json` with:
 {
   "code": "final Python code",
   "stdout": "full stdout from the final run",
+  "results_summary": "2-5 sentence summary of what was tested and what the evidence shows. This is what reviewers read — not stdout.",
   "metrics": {
     "primary_metric": "value",
     "secondary_metric": "value"
