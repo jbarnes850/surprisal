@@ -26,7 +26,7 @@ class Node:
     posterior_beta: Optional[float] = None
     k_prior: Optional[int] = None
     k_post: Optional[int] = None
-    n_belief_samples: int = 30
+    n_belief_samples: int = 10
     status: str = "pending"
     branch_id: Optional[str] = None
     claude_session_id: Optional[str] = None

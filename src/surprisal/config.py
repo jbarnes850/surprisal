@@ -20,7 +20,7 @@ class MCTSConfig:
     k_progressive: float = 1.0
     alpha_progressive: float = 0.5
     max_depth: int = 30
-    belief_samples: int = 30
+    belief_samples: int = 10
     virtual_loss: int = 2
     dedup_interval: int = 50
 

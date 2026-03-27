@@ -18,7 +18,7 @@ def test_default_config_has_expected_values():
     assert cfg.mcts.k_progressive == 1.0
     assert cfg.mcts.alpha_progressive == 0.5
     assert cfg.mcts.max_depth == 30
-    assert cfg.mcts.belief_samples == 30
+    assert cfg.mcts.belief_samples == 10
     assert cfg.mcts.virtual_loss == 2
     assert cfg.mcts.dedup_interval == 50
     assert not hasattr(cfg.mcts, "belief_temperature")

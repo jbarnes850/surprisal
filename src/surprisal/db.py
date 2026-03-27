@@ -40,7 +40,7 @@ class Database:
                 posterior_beta REAL,
                 k_prior INTEGER,
                 k_post INTEGER,
-                n_belief_samples INTEGER DEFAULT 30,
+                n_belief_samples INTEGER DEFAULT 10,
                 status TEXT DEFAULT 'pending',
                 branch_id TEXT,
                 claude_session_id TEXT,
