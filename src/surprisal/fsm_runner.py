@@ -13,7 +13,6 @@ from surprisal.agents.base import AgentResult
 from surprisal.agents.claude import ClaudeAgent
 from surprisal.agents.codex import CodexAgent
 from surprisal.agents.backends import create_backend, detect_gpu
-from surprisal.agents.experiment_container import ExperimentContainer
 from surprisal.config import AutoDiscoveryConfig
 from surprisal.db import Database
 from surprisal.exploration import load_branch_sessions, save_branch_sessions
@@ -293,8 +292,8 @@ async def run_live_fsm(
         logger.error("No agent providers available")
         db.update_node(node_id, status="failed", virtual_loss=0)
         return False
-    # Auto-detect GPU for backend selection (runs once per FSM execution)
-    _gpu_available = await detect_gpu() if config.sandbox.backend == "auto" else None
+    # Auto-detect GPU for Docker backend image selection
+    _gpu_available = await detect_gpu() if config.sandbox.backend in ("docker", "local") else None
 
     node = db.get_node(node_id)
     branch_id = node.branch_id or workspace.name
@@ -588,7 +587,12 @@ async def run_live_fsm(
             db.update_node(node_id, experiment_exit_code=result.exit_code)
             node.experiment_exit_code = result.exit_code
 
-            if ExperimentContainer.is_infra_error(result.exit_code):
+            # Docker-specific infra errors (exit 125-127) — only check for Docker backend
+            is_infra = (
+                hasattr(backend, "is_infra_error")
+                and backend.is_infra_error(result.exit_code)
+            )
+            if is_infra:
                 last_response = FSMResponse(error=True, exit_code=result.exit_code)
             else:
                 last_response = FSMResponse(

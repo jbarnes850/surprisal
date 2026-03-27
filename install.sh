@@ -11,12 +11,12 @@ if ! python3 --version >/dev/null 2>&1; then
 fi
 echo "Python: $(python3 --version)"
 
-# 2. Check Docker
-if ! docker --version >/dev/null 2>&1; then
-    echo "ERROR: Docker required. Install from https://docs.docker.com/get-docker/"
-    exit 1
+# 2. Check Docker (optional — only needed for backend = "docker")
+if docker --version >/dev/null 2>&1; then
+    echo "Docker: $(docker --version) (available for backend = \"docker\")"
+else
+    echo "Docker: not installed (optional — install for sandboxed execution with backend = \"docker\")"
 fi
-echo "Docker: $(docker --version)"
 
 # 3. Check/install uv (Python package manager)
 if ! command -v uv &>/dev/null; then
@@ -80,24 +80,25 @@ else
     echo "No local NVIDIA GPU detected on $HOST_OS — CPU sandbox mode (use HF Jobs or remote GPU for scale-out)"
 fi
 
-# 8. Select sandbox image (built lazily on first run)
+# 8. Sandbox image (only relevant for backend = "docker")
 echo ""
-echo "--- Sandbox Image Selection ---"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SANDBOX_IMAGE="surprisal-cpu:latest"
-if [ "$GPU" = true ]; then
-    SANDBOX_IMAGE="surprisal-gpu:latest"
-fi
-echo "Selected image: $SANDBOX_IMAGE"
-if docker image inspect "$SANDBOX_IMAGE" >/dev/null 2>&1; then
-    echo "Image already present locally."
-else
-    echo "Image not built yet — it will be built automatically on the first local run."
-    echo "Optional prebuild:"
+echo "--- Sandbox ---"
+echo "Default backend: host-native (no Docker required)."
+echo "For sandboxed execution, set backend = \"docker\" in config.toml."
+if docker --version >/dev/null 2>&1; then
+    SANDBOX_IMAGE="surprisal-cpu:latest"
     if [ "$GPU" = true ]; then
-        echo "  docker build -t surprisal-gpu:latest -f sandbox/Dockerfile.gpu sandbox/"
+        SANDBOX_IMAGE="surprisal-gpu:latest"
+    fi
+    if docker image inspect "$SANDBOX_IMAGE" >/dev/null 2>&1; then
+        echo "Docker image $SANDBOX_IMAGE already present."
     else
-        echo "  docker build -t surprisal-cpu:latest -f sandbox/Dockerfile.cpu sandbox/"
+        echo "Docker image not built. Optional prebuild for backend = \"docker\":"
+        if [ "$GPU" = true ]; then
+            echo "  docker build -t surprisal-gpu:latest -f sandbox/Dockerfile.gpu sandbox/"
+        else
+            echo "  docker build -t surprisal-cpu:latest -f sandbox/Dockerfile.cpu sandbox/"
+        fi
     fi
 fi
 

@@ -38,9 +38,17 @@ def test_create_backend_hf_jobs():
     assert isinstance(backend, HFJobsSandbox)
 
 
-def test_create_backend_auto_with_gpu():
-    from surprisal.agents.experiment_container import ExperimentContainer
+def test_create_backend_auto_returns_host_runner():
+    from surprisal.agents.backends import HostRunner
     config = SandboxConfig(backend="auto")
+    creds = CredentialsConfig()
+    backend = create_backend(config, creds, gpu_available=True)
+    assert isinstance(backend, HostRunner)
+
+
+def test_create_backend_docker_with_gpu():
+    from surprisal.agents.experiment_container import ExperimentContainer
+    config = SandboxConfig(backend="docker")
     creds = CredentialsConfig()
     backend = create_backend(config, creds, gpu_available=True)
     assert isinstance(backend, ExperimentContainer)
@@ -48,9 +56,9 @@ def test_create_backend_auto_with_gpu():
     assert backend.config.image == DEFAULT_GPU_IMAGE
 
 
-def test_create_backend_auto_without_gpu():
+def test_create_backend_docker_without_gpu():
     from surprisal.agents.experiment_container import ExperimentContainer
-    config = SandboxConfig(backend="auto")
+    config = SandboxConfig(backend="docker")
     creds = CredentialsConfig()
     backend = create_backend(config, creds, gpu_available=False)
     assert isinstance(backend, ExperimentContainer)

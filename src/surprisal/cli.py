@@ -124,7 +124,7 @@ def _run_explore_command(
         _emit_error("Claude CLI is required. Run 'claude auth login' first.", as_json=as_json, extra=extra)
 
     # Ensure Docker runner can authenticate Claude inside the container
-    if cfg.sandbox.backend in ("auto", "local"):
+    if cfg.sandbox.backend in ("docker", "local"):
         from surprisal.config import save_config
         if not ensure_runner_auth(config_path=get_config_path(), save_config_fn=save_config, cfg=cfg):
             db.close()

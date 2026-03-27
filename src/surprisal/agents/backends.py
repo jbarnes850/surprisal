@@ -5,7 +5,7 @@ from typing import Protocol, runtime_checkable
 
 from surprisal.agents.base import AgentResult
 from surprisal.config import CredentialsConfig, SandboxConfig, resolve_sandbox_image
-from surprisal.progress import ProgressCallback
+from surprisal.progress import ProgressCallback, emit_progress
 
 
 @runtime_checkable
@@ -18,8 +18,40 @@ class SandboxBackend(Protocol):
         system_prompt_file: str | None = None,
         session_id: str | None = None,
         progress_callback: ProgressCallback | None = None,
+        node_id: str | None = None,
     ) -> AgentResult:
         ...
+
+
+class HostRunner:
+    """Host-native backend — runs the runner agent directly via ClaudeAgent."""
+
+    async def execute(
+        self,
+        experiment_prompt: str,
+        workspace: Path,
+        config: SandboxConfig,
+        system_prompt_file: str | None = None,
+        session_id: str | None = None,
+        progress_callback: ProgressCallback | None = None,
+        node_id: str | None = None,
+    ) -> AgentResult:
+        from surprisal.agents.claude import ClaudeAgent
+
+        agent = ClaudeAgent(model="sonnet", max_turns=20)
+        emit_progress(progress_callback, f"Runner: executing experiment on host.")
+        result = await agent.invoke(
+            prompt=experiment_prompt,
+            system_prompt_file=system_prompt_file,
+            output_format="json",
+            cwd=str(workspace),
+            timeout=config.timeout,
+            session_id=session_id,
+            resume_session=bool(session_id),
+        )
+        # Write stdout for downstream consumers (analyst, reviewer)
+        (workspace / "stdout.txt").write_text(result.raw)
+        return result
 
 
 async def detect_gpu() -> bool:
@@ -46,11 +78,11 @@ def create_backend(
     if config.backend == "hf_jobs":
         return HFJobsSandbox(config=config, credentials=credentials)
 
-    if config.backend == "local" or config.backend == "auto":
-        if config.backend == "auto" and gpu_available is not None:
+    if config.backend == "docker" or config.backend == "local":
+        if gpu_available is not None:
             config.gpu = gpu_available
         config.image = resolve_sandbox_image(config.image, config.gpu)
         return ExperimentContainer(config=config, credentials=credentials)
 
-    config.image = resolve_sandbox_image(config.image, config.gpu)
-    return ExperimentContainer(config=config, credentials=credentials)
+    # backend == "auto" or anything else: host-native runner (no Docker)
+    return HostRunner()
