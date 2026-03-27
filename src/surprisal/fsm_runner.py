@@ -3,6 +3,7 @@
 This module implements the full discovery agent pipeline for a single MCTS node:
   experiment_generator → runner → analyst → reviewer → hypothesis → belief
 """
+import asyncio
 import hashlib
 import json
 import logging
@@ -112,6 +113,55 @@ def _forked_belief_session_args(session_id: str | None) -> dict[str, object]:
         "resume_session": bool(session_id),
         "fork_session": bool(session_id),
     }
+
+
+async def _run_belief_batch(
+    agent,
+    prompt: str,
+    n: int,
+    research_session_id: str | None,
+    db: Database,
+    node_id: str,
+    phase: str,
+    workspace: Path,
+    progress_callback: ProgressCallback | None = None,
+) -> int:
+    """Run n belief samples concurrently. Returns count of True beliefs."""
+    emit_progress(progress_callback, f"Node {node_id}: sampling {n} {phase} beliefs concurrently.")
+
+    async def _sample(i: int) -> tuple[int, AgentResult]:
+        result = await agent.invoke(
+            prompt=prompt,
+            output_format="text",
+            cwd=str(workspace),
+            **_forked_belief_session_args(research_session_id),
+        )
+        return i, result
+
+    results = await asyncio.gather(*[_sample(i) for i in range(n)])
+
+    k = 0
+    for i, result in results:
+        _record_invocation(db, node_id, f"belief_elicitation_{phase}", "claude", prompt, result)
+        data, stage_error = _extract_stage_json(result, f"belief_elicitation_{phase}")
+        if stage_error:
+            return _fail_node(db, node_id, "belief_elicitation", stage_error)
+        if "believes_hypothesis" not in data or not isinstance(data["believes_hypothesis"], bool):
+            return _fail_node(
+                db, node_id, "belief_elicitation",
+                f"belief_elicitation_{phase} failed: missing boolean believes_hypothesis",
+            )
+        believes = data["believes_hypothesis"]
+        if believes:
+            k += 1
+        db.insert_belief_sample(BeliefSample(
+            node_id=node_id, phase=phase,
+            sample_index=i, believes_hypothesis=bool(believes),
+            raw_response=result.raw[:500],
+        ))
+
+    emit_progress(progress_callback, f"Node {node_id}: {phase} belief complete — {k}/{n} positive.")
+    return k
 
 
 def _unwrap_json_payload(parsed: object) -> object:
@@ -719,7 +769,7 @@ async def run_live_fsm(
             )
             last_response = FSMResponse(error=False, data=data)
 
-        # ── Belief Elicitation (Claude x60) ──
+        # ── Belief Elicitation (concurrent) ──
         elif state == "belief_elicitation":
             node = db.get_node(node_id)  # refresh
             n_samples = config.mcts.belief_samples
@@ -727,42 +777,13 @@ async def run_live_fsm(
 
             # Prior elicitation (no evidence)
             prior_prompt = _belief_prompt(hypothesis_text)
-            k_prior = 0
-            for i in range(n_samples):
-                result = await research_agent.invoke(
-                    prompt=prior_prompt,
-                    output_format="text",
-                    cwd=str(workspace),
-                    **_forked_belief_session_args(research_session_id),
-                )
-                _record_invocation(
-                    db,
-                    node_id,
-                    "belief_elicitation_prior",
-                    "claude",
-                    prior_prompt,
-                    result,
-                )
-                data, stage_error = _extract_stage_json(result, "belief_elicitation_prior")
-                if stage_error:
-                    return _fail_node(db, node_id, state, stage_error)
-                if "believes_hypothesis" not in data or not isinstance(data["believes_hypothesis"], bool):
-                    return _fail_node(
-                        db,
-                        node_id,
-                        state,
-                        "belief_elicitation_prior failed: missing boolean believes_hypothesis",
-                    )
-                believes = data["believes_hypothesis"]
-                if believes:
-                    k_prior += 1
-                db.insert_belief_sample(BeliefSample(
-                    node_id=node_id, phase="prior",
-                    sample_index=i, believes_hypothesis=bool(believes),
-                    raw_response=result.raw[:500],
-                ))
-                if i % 10 == 0:
-                    logger.info(f"  Belief prior: {i+1}/{n_samples}, k_prior={k_prior}")
+            k_prior_result = await _run_belief_batch(
+                research_agent, prior_prompt, n_samples,
+                research_session_id, db, node_id, "prior", workspace, progress_callback,
+            )
+            if isinstance(k_prior_result, bool):
+                return k_prior_result  # _fail_node was called
+            k_prior = k_prior_result
 
             # Posterior elicitation (with evidence)
             posterior_prompt = _belief_prompt(
@@ -772,42 +793,13 @@ async def run_live_fsm(
                     f"Analysis:\n{analysis_summary}"
                 ),
             )
-            k_post = 0
-            for i in range(n_samples):
-                result = await research_agent.invoke(
-                    prompt=posterior_prompt,
-                    output_format="text",
-                    cwd=str(workspace),
-                    **_forked_belief_session_args(research_session_id),
-                )
-                _record_invocation(
-                    db,
-                    node_id,
-                    "belief_elicitation_posterior",
-                    "claude",
-                    posterior_prompt,
-                    result,
-                )
-                data, stage_error = _extract_stage_json(result, "belief_elicitation_posterior")
-                if stage_error:
-                    return _fail_node(db, node_id, state, stage_error)
-                if "believes_hypothesis" not in data or not isinstance(data["believes_hypothesis"], bool):
-                    return _fail_node(
-                        db,
-                        node_id,
-                        state,
-                        "belief_elicitation_posterior failed: missing boolean believes_hypothesis",
-                    )
-                believes = data["believes_hypothesis"]
-                if believes:
-                    k_post += 1
-                db.insert_belief_sample(BeliefSample(
-                    node_id=node_id, phase="posterior",
-                    sample_index=i, believes_hypothesis=bool(believes),
-                    raw_response=result.raw[:500],
-                ))
-                if i % 10 == 0:
-                    logger.info(f"  Belief posterior: {i+1}/{n_samples}, k_post={k_post}")
+            k_post_result = await _run_belief_batch(
+                research_agent, posterior_prompt, n_samples,
+                research_session_id, db, node_id, "posterior", workspace, progress_callback,
+            )
+            if isinstance(k_post_result, bool):
+                return k_post_result  # _fail_node was called
+            k_post = k_post_result
 
             # Compute surprisal
             surprisal_result = compute_surprisal(k_prior, k_post, n_samples)
@@ -824,6 +816,7 @@ async def run_live_fsm(
                 posterior_beta=surprisal_result.posterior_beta,
                 k_prior=k_prior,
                 k_post=k_post,
+                n_belief_samples=n_samples,
                 bayesian_surprise=surprisal_result.bayesian_surprise,
                 belief_shifted=surprisal_result.belief_shifted,
             )
