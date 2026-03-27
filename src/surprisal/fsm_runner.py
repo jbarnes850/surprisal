@@ -407,12 +407,9 @@ async def run_live_fsm(
             # WebFetch for the HuggingFace fallback path when alphaxiv is unavailable.
             # See spec Section 6.3.
 
-            # Forward user's MCP config for paper search
+            # The generator inherits the host's MCP servers (including alphaxiv)
+            # automatically. No --mcp-config override needed.
             gen_extra_args = []
-            if literature_provider and literature_provider.provider == "alphaxiv":
-                claude_json = Path.home() / ".claude.json"
-                if claude_json.exists():
-                    gen_extra_args = ["--mcp-config", str(claude_json)]
 
             # Build literature search instructions (conditional on provider)
             from datetime import date
