@@ -520,8 +520,9 @@ async def test_run_live_fsm_reuses_branch_sessions_and_updates_latest_ids(tmp_pa
     assert ok is True
     assert backend.research_agent.calls[0]["session_id"] == "claude-existing"
     assert backend.research_agent.calls[0]["resume_session"] is True
-    assert backend.code_agent.calls[0]["session_id"] == "codex-existing"
-    assert backend.code_agent.calls[0]["resume_session"] is True
+    # Codex agents use fresh sessions (no resume) because exec resume
+    # doesn't support -o for clean output capture.
+    assert "session_id" not in backend.code_agent.calls[0]
     assert backend.calls[0]["session_id"] == "runner-existing"
     assert backend.research_agent.calls[1]["session_id"] == "claude-new"
     assert backend.research_agent.calls[1]["resume_session"] is True

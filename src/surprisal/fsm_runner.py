@@ -629,15 +629,15 @@ async def run_live_fsm(
                 f"Stderr:\n{stderr_text}\n\n"
                 f"Code:\n{experiment_code[:2000]}"
             )
+            # Fresh session: analyst gets full context in the prompt and
+            # Codex exec resume doesn't support -o for clean output capture.
             result = await code_agent.invoke(
                 prompt=prompt,
                 system_prompt_file=str(_prompts_dir() / "experiment_analyst.md"),
                 output_format="text",
                 cwd=str(exp_dir),
                 timeout=120,
-                **_resume_session_args(code_session_id),
             )
-            _remember_code_session(result)
             _record_invocation(
                 db,
                 node_id,
