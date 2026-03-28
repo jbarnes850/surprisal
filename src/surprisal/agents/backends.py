@@ -49,6 +49,17 @@ class HostRunner:
             session_id=session_id,
             resume_session=bool(session_id),
         )
+        # If session resume failed instantly, retry with a fresh session.
+        # Stale sessions (from killed runs) cause exit code 1 at 0s.
+        if result.exit_code != 0 and session_id and result.duration_seconds < 2:
+            emit_progress(progress_callback, f"Runner: session resume failed, retrying fresh.")
+            result = await agent.invoke(
+                prompt=experiment_prompt,
+                system_prompt_file=system_prompt_file,
+                output_format="json",
+                cwd=str(workspace),
+                timeout=config.timeout,
+            )
         # Write stdout for downstream consumers (analyst, reviewer)
         (workspace / "stdout.txt").write_text(result.raw)
         return result
