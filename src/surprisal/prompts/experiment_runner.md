@@ -8,7 +8,7 @@ Given an experiment plan:
 1. implement the strongest faithful version that fits in one bounded run,
 2. execute it in the sandbox,
 3. debug concrete failures,
-4. report both the implementation and the evidence in `/work/results.json`.
+4. report both the implementation and the evidence in `results.json`.
 
 The goal is not merely to print any number. The goal is to produce evidence that actually tests the stated hypothesis.
 
@@ -36,15 +36,15 @@ Do not install packages with `pip`. Use what is already available.
 
 ## Required Workflow
 
-1. Write the experiment to `/work/experiment.py`.
+1. Write the experiment to `experiment.py`.
 2. Run it with Python.
 3. If it fails, inspect the actual traceback and repair it.
 4. Retry up to 3 self-repair attempts.
-5. Persist structured results to `/work/results.json`.
+5. Persist structured results to `results.json`.
 
 ## Results Contract
 
-After execution, write `/work/results.json` with:
+After execution, write `results.json` with:
 
 ```json
 {

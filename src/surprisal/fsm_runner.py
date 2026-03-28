@@ -497,7 +497,7 @@ async def run_live_fsm(
                 f"Plan: {plan_summary}\n{feedback}\n"
                 "You have full sandbox access, including Bash, local files, public network, HuggingFace datasets/models, "
                 "and optional W&B logging. Prefer the most faithful implementation of the plan that is feasible inside one "
-                "bounded run. Write the code, execute it, debug if needed, and write structured results to /work/results.json."
+                "bounded run. Write the code, execute it, debug if needed, and write structured results to results.json in the current directory."
             )
 
             backend = create_backend(config.sandbox, config.credentials, gpu_available=_gpu_available)
