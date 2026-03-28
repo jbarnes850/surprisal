@@ -30,7 +30,7 @@ class AgentsConfig:
     claude_model: str = "opus"
     codex_model: str = "gpt-5.4"
     max_turns: int = 20
-    code_attempts: int = 6
+    code_attempts: int = 3
     revision_attempts: int = 1
     generator_timeout: int = 180  # seconds, longer when literature search is active
 

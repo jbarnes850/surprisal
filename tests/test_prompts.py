@@ -60,17 +60,17 @@ def test_experiment_reviser_does_not_default_to_toy_synthetic_plans():
     assert "Downgrading every failed plan into a toy synthetic correlation test." in text
 
 
-def test_analyst_prompt_requires_fidelity_and_validity_checks():
+def test_analyst_prompt_checks_execution_fidelity():
     prompts_dir = Path(surprisal.__file__).parent / "prompts"
     text = (prompts_dir / "experiment_analyst.md").read_text()
-    assert "did not actually implement the plan" in text
-    assert "silently substituted a toy or unrelated experiment" in text
-    assert "Be strict about fidelity and validity." in text
+    assert "execution fidelity" in text
+    assert "entirely unrelated to the plan" in text
+    assert "Outside your scope" in text
 
 
-def test_reviewer_prompt_requires_research_grade_evidence():
+def test_reviewer_prompt_checks_evidential_relevance():
     prompts_dir = Path(surprisal.__file__).parent / "prompts"
     text = (prompts_dir / "experiment_reviewer.md").read_text()
-    assert "Approve only when" in text
-    assert "provider or formatting failures prevent reliable interpretation" in text
-    assert "Do not approve merely because" in text
+    assert "informative enough to update beliefs" in text
+    assert "fatal flaw" in text.lower() or "fatal methodological flaw" in text
+    assert "Outside your scope" in text

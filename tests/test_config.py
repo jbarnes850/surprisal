@@ -25,7 +25,7 @@ def test_default_config_has_expected_values():
     assert cfg.agents.claude_model == "opus"
     assert cfg.agents.codex_model == "gpt-5.4"
     assert cfg.agents.max_turns == 20
-    assert cfg.agents.code_attempts == 6
+    assert cfg.agents.code_attempts == 3
     assert cfg.agents.revision_attempts == 1
     assert cfg.sandbox.memory_limit == "16g"
     assert cfg.sandbox.cpu_limit == "4"
