@@ -1,4 +1,4 @@
-from surprisal.agents.codex import CodexAgent, extract_thread_id
+from surprisal.agents.codex import CodexAgent, extract_thread_id, extract_message_content
 
 
 def test_codex_builds_correct_command():
@@ -58,3 +58,43 @@ def test_extract_thread_id_from_jsonl():
         '{"type":"turn.completed","turn_id":"turn-1"}',
     ])
     assert extract_thread_id(jsonl) == "thread-123"
+
+
+def test_codex_resume_skips_output_flag():
+    agent = CodexAgent()
+    cmd = agent.build_command(
+        prompt="Review this",
+        output_file="/tmp/out.txt",
+        session_id="thread-456",
+    )
+    assert cmd[:3] == ["codex", "exec", "resume"]
+    assert "-o" not in cmd
+    assert "/tmp/out.txt" not in cmd
+
+
+def test_codex_non_resume_includes_output_flag():
+    agent = CodexAgent()
+    cmd = agent.build_command(
+        prompt="Analyze this",
+        output_file="/tmp/out.txt",
+    )
+    assert "exec" in cmd
+    assert "resume" not in cmd
+    assert "-o" in cmd
+    assert "/tmp/out.txt" in cmd
+
+
+def test_extract_message_content_from_completed():
+    jsonl = "\n".join([
+        '{"type":"thread.started","thread_id":"t-1"}',
+        '{"type":"message.delta","content":"partial"}',
+        '{"type":"message.completed","text":"{\\"error\\": false, \\"assessment\\": \\"Valid result\\"}"}',
+    ])
+    content = extract_message_content(jsonl)
+    assert "error" in content
+    assert "Valid result" in content
+
+
+def test_extract_message_content_fallback_to_raw():
+    raw = "not jsonl at all"
+    assert extract_message_content(raw) == raw

@@ -25,6 +25,36 @@ def extract_thread_id(jsonl_output: str) -> Optional[str]:
     return None
 
 
+def extract_message_content(jsonl_output: str) -> str:
+    """Extract final assistant message content from Codex JSONL output.
+
+    Needed when -o (output-last-message) is unavailable (e.g. exec resume).
+    Scans for message events and returns the last assistant content found.
+    Falls back to the raw JSONL if no message content is found.
+    """
+    last_content = ""
+    for line in jsonl_output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        etype = event.get("type", "")
+        # message.completed carries the full final text
+        if etype == "message.completed":
+            text = event.get("text") or event.get("content") or ""
+            if isinstance(text, str) and text.strip():
+                last_content = text.strip()
+        # Accumulate deltas as fallback
+        elif etype == "message.delta":
+            delta = event.get("delta") or event.get("content") or ""
+            if isinstance(delta, str):
+                last_content += delta
+    return last_content if last_content else jsonl_output
+
+
 class CodexAgent:
     def __init__(self, model: str = "gpt-5.4"):
         self.model = model
@@ -50,7 +80,8 @@ class CodexAgent:
             cmd = ["codex", "exec", "--full-auto", "-c", f'model="{self.model}"']
         cmd.append("--json")
         cmd.append("--skip-git-repo-check")
-        if output_file:
+        # -o (output-last-message) is only supported by `exec`, not `exec resume`
+        if output_file and not session_id:
             cmd.extend(["-o", output_file])
         if output_schema_file:
             cmd.extend(["--output-schema", output_schema_file])
@@ -112,13 +143,16 @@ class CodexAgent:
         stdout_text = stdout.decode("utf-8", errors="replace")
         thread_id = extract_thread_id(stdout_text) or (session_id if resume_session else None)
 
-        # Read the clean last-message output
+        # Read the clean last-message output.
+        # When -o is available (non-resume), the output file has the last message.
+        # When -o is unavailable (resume), extract from JSONL stdout.
         output_path = Path(output_file)
+        raw = ""
         if output_path.exists():
             raw = output_path.read_text()
             output_path.unlink(missing_ok=True)
-        else:
-            raw = stdout.decode("utf-8", errors="replace")
+        if not raw.strip():
+            raw = extract_message_content(stdout_text)
         if schema_path:
             Path(schema_path).unlink(missing_ok=True)
 
