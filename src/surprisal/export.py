@@ -12,6 +12,7 @@ def export_json(db: Database, top: int = None, min_surprisal: float = None) -> d
             {
                 "id": n.id,
                 "hypothesis": n.hypothesis,
+                "finding": n.finding,
                 "initial_hypothesis": n.initial_hypothesis,
                 "context": n.context,
                 "variables": n.variables,
@@ -51,23 +52,26 @@ def export_markdown(db: Database, top: int = None, min_surprisal: float = None) 
     lines.append(f"**Total hypotheses:** {len(nodes)}")
     lines.append("")
     for i, n in enumerate(nodes, 1):
-        bs = f"{n.bayesian_surprise:.3f}" if n.bayesian_surprise else "N/A"
+        bs = f"{n.bayesian_surprise:.3f}" if n.bayesian_surprise is not None else "N/A"
+        prior_str = f"{n.prior_mean:.2f}" if n.prior_mean is not None else "N/A"
+        posterior_str = f"{n.posterior_mean:.2f}" if n.posterior_mean is not None else "N/A"
         lines.append(f"## {i}. {n.hypothesis}")
-        lines.append(f"- **Bayesian Surprise:** {bs}")
-        lines.append(f"- **Prior Mean:** {n.prior_mean}")
-        lines.append(f"- **Posterior Mean:** {n.posterior_mean}")
-        lines.append(f"- **Depth:** {n.depth}")
+        lines.append("")
+        if n.finding:
+            lines.append(f"**Finding:** {n.finding}")
+        lines.append(f"**Bayesian Surprise:** {bs} (prior: {prior_str} → posterior: {posterior_str})")
+        lines.append(f"**Depth:** {n.depth}")
         if n.cited_papers:
             try:
                 papers = json.loads(n.cited_papers)
                 if papers:
-                    lines.append("- **Grounded in:**")
+                    lines.append("**Grounded in:**")
                     for p in papers:
-                        lines.append(f"  - [{p.get('arxiv_id', '?')}] \"{p.get('title', '?')}\" -- Gap: {p.get('gap', '?')}")
+                        lines.append(f"- [{p.get('arxiv_id', '?')}] \"{p.get('title', '?')}\" -- Gap: {p.get('gap', '?')}")
             except (json.JSONDecodeError, TypeError):
                 pass
         if n.context:
-            lines.append(f"- **Context:** {n.context}")
+            lines.append(f"**Context:** {n.context}")
         lines.append("")
     return "\n".join(lines)
 

@@ -1,6 +1,9 @@
 import pytest
 from surprisal.bayesian import (
     LIKERT_MAP,
+    PRIOR_CLAMP_MIN,
+    PRIOR_CLAMP_MAX,
+    clamp_prior_scores,
     estimate_beta_from_likert,
     kl_divergence_beta,
     bayesian_surprise_kl,
@@ -109,3 +112,34 @@ def test_compute_surprisal_evidence_weight_matters():
     assert r1.kl_raw == pytest.approx(0.0, abs=1e-10)
     # With ew=2.0 and identical scores, posterior Beta is more concentrated
     assert r2.kl_raw > 0
+
+
+def test_clamp_prior_scores_leaves_moderate_scores_unchanged():
+    scores = [0.5] * 10
+    clamped = clamp_prior_scores(scores)
+    assert clamped == scores
+
+
+def test_clamp_prior_scores_clips_extremes():
+    scores = [1.0] * 10  # all definitely_true
+    clamped = clamp_prior_scores(scores)
+    assert all(s == PRIOR_CLAMP_MAX for s in clamped)
+
+
+def test_clamp_prior_scores_clips_low_extremes():
+    scores = [0.0] * 10  # all definitely_false
+    clamped = clamp_prior_scores(scores)
+    assert all(s == PRIOR_CLAMP_MIN for s in clamped)
+
+
+def test_compute_surprisal_overconfident_prior_is_clamped():
+    """The bug: prior=[1.0]*10 produced Beta(10.5, 0.5) with mean ~0.95.
+    With clamping, prior scores are clipped to 0.9, producing a moderate prior."""
+    prior_scores = [1.0] * 10  # overconfident: all definitely_true
+    posterior_scores = [0.5] * 10  # uncertain posterior
+    result = compute_surprisal(prior_scores, posterior_scores)
+    prior_mean = result.prior_alpha / (result.prior_alpha + result.prior_beta)
+    # Prior mean should be at most 0.9 after clamping
+    assert prior_mean <= 0.91
+    # Should still produce nonzero surprise
+    assert result.bayesian_surprise > 0

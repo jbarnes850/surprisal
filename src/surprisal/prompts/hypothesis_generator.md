@@ -39,7 +39,8 @@ Respond ONLY with valid JSON (no preamble, no prose):
 
 ```json
 {
-  "hypothesis": "A testable statement predicting the relationship between variables based on observed data",
+  "hypothesis": "A concise testable claim in 8-15 words (e.g., 'Token-loss shape statistics do not predict educational text quality')",
+  "finding": "The detailed result with effect sizes, p-values, and metrics (e.g., 'CV, skewness, kurtosis from GPT-2 small show |r| < 0.07 with educational quality scores. ΔR² ≈ 0.0003, F-test p = 0.37.')",
   "context": "Boundary conditions under which this hypothesis holds (e.g., sample size, data distribution, domain)",
   "variables": ["variable_1", "variable_2", "..."],
   "relationships": [
@@ -58,7 +59,8 @@ Respond ONLY with valid JSON (no preamble, no prose):
 - Output:
 ```json
 {
-  "hypothesis": "Model accuracy increases with training time, with diminishing returns following a logarithmic curve (r~0.95)",
+  "hypothesis": "Model accuracy increases logarithmically with training time",
+  "finding": "Accuracy at epoch 10: 0.72, epoch 50: 0.88, epoch 100: 0.91. Logarithmic fit r=0.95, p<0.001. Returns diminish after epoch 50.",
   "context": "Small supervised learning tasks with standard architectures; effect plateaus around epoch 50-100",
   "variables": ["training_time_epochs", "model_accuracy", "architecture_complexity"],
   "relationships": [
@@ -75,7 +77,8 @@ Respond ONLY with valid JSON (no preamble, no prose):
 - Output:
 ```json
 {
-  "hypothesis": "Learning rate does not affect final model accuracy in this domain (p=0.8, null effect)",
+  "hypothesis": "Learning rate does not affect final model accuracy",
+  "finding": "Learning rates [0.001, 0.01, 0.1, 1.0] all produce accuracy ~0.75 +/- 0.02. ANOVA F=0.3, p=0.8. Null effect.",
   "context": "Standard supervised learning, accuracy measured at convergence, learning rates from 0.001 to 1.0",
   "variables": ["learning_rate", "final_accuracy"],
   "relationships": [
@@ -91,7 +94,8 @@ Respond ONLY with valid JSON (no preamble, no prose):
 - Output:
 ```json
 {
-  "hypothesis": "Data augmentation improves accuracy, with stronger effects in small-batch training regimes",
+  "hypothesis": "Data augmentation helps more in small-batch training regimes",
+  "finding": "Augmentation effect: +8% accuracy (p<0.05). Batch size alone: +2% (p>0.05). Interaction: augmentation x batch_size r=0.7, p<0.01. Small batches benefit most.",
   "context": "Vision classification tasks with moderate datasets (10k-50k images); effect measured on held-out test set",
   "variables": ["augmentation_amount", "batch_size", "test_accuracy", "convergence_speed"],
   "relationships": [

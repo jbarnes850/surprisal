@@ -196,8 +196,15 @@ async def _run_belief_logprob(
     model = config.belief.model or "minimax/minimax-m2.5"
 
     system_prompt = (
-        "You are a Bayesian reasoner making a graded epistemic judgment about a hypothesis. "
-        "Respond with exactly one word from: definitely_true, maybe_true, uncertain, maybe_false, definitely_false"
+        "You are a Bayesian reasoner making a calibrated epistemic judgment about a hypothesis.\n\n"
+        "CALIBRATION GUIDELINES:\n"
+        "- Most novel scientific hypotheses are wrong or inconclusive. Default toward 'uncertain' for untested or speculative claims.\n"
+        "- Reserve 'definitely_true' for claims with overwhelming, replicated evidence (e.g., established physical laws).\n"
+        "- Reserve 'definitely_false' for claims that contradict well-established evidence.\n"
+        "- A plausible-sounding hypothesis is NOT the same as a well-supported one. Plausibility alone warrants 'uncertain' or at most 'maybe_true'.\n"
+        "- Base rates matter: in a typical research domain, fewer than 20% of novel hypotheses survive replication.\n\n"
+        "Respond with valid JSON: {\"belief\": \"LEVEL\"}\n"
+        "where LEVEL is one of: definitely_true, maybe_true, uncertain, maybe_false, definitely_false"
     )
 
     async def _call_openrouter(user_content: str) -> float | None:
@@ -210,7 +217,7 @@ async def _run_belief_logprob(
             "logprobs": True,
             "top_logprobs": 5,
             "max_tokens": 2000,
-            "temperature": 0.0,
+            "temperature": 0.4,
             "provider": {"require_parameters": True},
         }).encode("utf-8")
 
@@ -250,14 +257,33 @@ async def _run_belief_logprob(
             logger.error("OpenRouter returned no choices")
             return None
 
+        def _parse_belief_text(raw: str) -> float | None:
+            """Parse a belief value from text — try JSON first, then bare label."""
+            text = raw.strip()
+            # Try JSON: {"belief": "uncertain"}
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, dict):
+                    label = str(parsed.get("belief", "")).strip().lower()
+                    if label in LIKERT_MAP:
+                        return LIKERT_MAP[label]
+            except (json.JSONDecodeError, TypeError):
+                pass
+            # Bare label fallback
+            label = text.lower()
+            if label in LIKERT_MAP:
+                return LIKERT_MAP[label]
+            return None
+
         logprobs_data = choices[0].get("logprobs", {})
         content_logprobs = logprobs_data.get("content", [])
         if not content_logprobs:
-            # No logprobs: parse the text response as exact Likert label
-            text = (choices[0].get("message", {}).get("content") or "").strip().lower()
-            if text in LIKERT_MAP:
-                return LIKERT_MAP[text]
-            logger.error(f"OpenRouter returned no logprobs and unrecognized text='{text}'")
+            # No logprobs: parse the text response
+            text = (choices[0].get("message", {}).get("content") or "")
+            result = _parse_belief_text(text)
+            if result is not None:
+                return result
+            logger.error(f"OpenRouter returned no logprobs and unparseable text='{text.strip()[:100]}'")
             return None
 
         # Score each Likert label by its best logprob across token positions.
@@ -276,10 +302,11 @@ async def _run_belief_logprob(
 
         if not label_logprobs:
             # No exact Likert token matches; parse text response
-            text = (choices[0].get("message", {}).get("content") or "").strip().lower()
-            if text in LIKERT_MAP:
-                return LIKERT_MAP[text]
-            logger.error(f"OpenRouter logprobs contained no Likert tokens, text='{text}'")
+            text = (choices[0].get("message", {}).get("content") or "")
+            result = _parse_belief_text(text)
+            if result is not None:
+                return result
+            logger.error(f"OpenRouter logprobs contained no Likert tokens, text='{text.strip()[:100]}'")
             return None
 
         # Softmax over matched labels, weighted by their Likert scores
@@ -648,6 +675,8 @@ async def run_live_fsm(
                 cited_papers=cited_papers,
             )
             (exp_dir / "plan.md").write_text(experiment_plan)
+            _hyp_preview = " ".join(hypothesis[:120].split())
+            emit_progress(progress_callback, f"Node {node_id}: hypothesis — {_hyp_preview}")
             last_response = FSMResponse(error=False, data=data)
 
         # ── Experiment Runner (agent inside container) ──
@@ -668,6 +697,8 @@ async def run_live_fsm(
                 "bounded run. Write the code, execute it, debug if needed, and write structured results to results.json in the current directory."
             )
 
+            import time as _time
+            _runner_start = _time.monotonic()
             backend = create_backend(config.sandbox, config.credentials, gpu_available=_gpu_available)
             result = await backend.execute(
                 experiment_prompt=runner_prompt,
@@ -752,6 +783,14 @@ async def run_live_fsm(
                     f"{experiment_output}\n\nRUNNER ERROR: {runner_feedback}".strip()
                 )
 
+            _runner_elapsed = _time.monotonic() - _runner_start
+            _has_results = (exp_dir / "results.json").exists()
+            emit_progress(
+                progress_callback,
+                f"Node {node_id}: runner finished in {_runner_elapsed:.0f}s — "
+                f"results.json {'produced' if _has_results else 'missing'}, "
+                f"exit={result.exit_code}.",
+            )
             db.update_node(node_id, experiment_exit_code=result.exit_code)
             node.experiment_exit_code = result.exit_code
 
@@ -821,9 +860,11 @@ async def run_live_fsm(
             elif "error" not in data or not isinstance(data["error"], bool):
                 return _fail_node(db, node_id, state, "experiment_analyst failed: missing boolean 'error' field")
             elif data["error"]:
+                _analyst_feedback = str(data.get("feedback", "experiment_analyst reported an unspecified error")).strip()
+                emit_progress(progress_callback, f"Node {node_id}: analyst rejected — {' '.join(_analyst_feedback[:100].split())}")
                 last_response = FSMResponse(
                     error=True,
-                    feedback=str(data.get("feedback", "experiment_analyst reported an unspecified error")).strip(),
+                    feedback=_analyst_feedback,
                 )
             else:
                 analysis_summary = str(data.get("summary", "")).strip()
@@ -833,6 +874,7 @@ async def run_live_fsm(
                         "experiment_analyst failed: missing summary for successful analysis",
                     )
                 (exp_dir / "analysis.md").write_text(analysis_summary)
+                emit_progress(progress_callback, f"Node {node_id}: analyst accepted.")
                 last_response = FSMResponse(error=False, data=data)
 
         # ── Experiment Reviewer (Codex) ──
@@ -885,6 +927,7 @@ async def run_live_fsm(
                 # checks the current value to decide if revision is allowed.
                 # The count is incremented ONLY when we actually enter experiment_reviser.
                 feedback = str(data.get("feedback", "experiment_reviewer rejected the experiment")).strip()
+                emit_progress(progress_callback, f"Node {node_id}: reviewer rejected — {' '.join(feedback[:100].split())}")
                 last_response = FSMResponse(error=True, feedback=feedback)
                 (exp_dir / "review.md").write_text(f"REJECTED: {feedback}")
             else:
@@ -894,6 +937,7 @@ async def run_live_fsm(
                     (exp_dir / "review.md").write_text(f"FAILED: {feedback}")
                     return _fail_node(db, node_id, state, feedback)
                 (exp_dir / "review.md").write_text(f"APPROVED: {assessment}")
+                emit_progress(progress_callback, f"Node {node_id}: reviewer approved.")
                 last_response = FSMResponse(error=False, data=data)
 
         # ── Experiment Reviser (Codex) ──
@@ -937,7 +981,8 @@ async def run_live_fsm(
                 f"Experiment: {experiment_plan}\n"
                 f"Results: {experiment_output[:2000]}\n"
                 f"Analysis: {analysis_summary}\n\n"
-                "Respond with JSON: {{\"hypothesis\": \"...\", \"context\": \"...\", "
+                "Respond with JSON: {{\"hypothesis\": \"<concise 8-15 word claim>\", "
+                "\"finding\": \"<detailed result with effect sizes>\", \"context\": \"...\", "
                 "\"variables\": [...], \"relationships\": [...]}}"
             )
             sys_prompt = str(_prompts_dir() / "hypothesis_generator.md")
@@ -958,8 +1003,10 @@ async def run_live_fsm(
             if not hypothesis:
                 return _fail_node(db, node_id, state, "hypothesis_generator failed: missing hypothesis")
 
+            finding = str(data.get("finding", "")).strip()
             db.update_node(node_id,
                 hypothesis=hypothesis,
+                finding=finding or None,
                 context=data.get("context", ""),
                 variables=json.dumps(data.get("variables", [])),
                 relationships=json.dumps(data.get("relationships", [])),
@@ -1026,8 +1073,14 @@ async def run_live_fsm(
                 evidence_weight=evidence_weight,
                 kl_scale=kl_scale,
             )
-            prior_mean = sum(prior_scores) / len(prior_scores) if prior_scores else 0.5
-            posterior_mean = sum(posterior_scores) / len(posterior_scores) if posterior_scores else 0.5
+            # Derive means from the Beta params (which use clamped prior scores)
+            # so the exported values match the actual distributions used for BS.
+            prior_mean = (
+                surprisal_result.prior_alpha / (surprisal_result.prior_alpha + surprisal_result.prior_beta)
+            )
+            posterior_mean = (
+                surprisal_result.posterior_alpha / (surprisal_result.posterior_alpha + surprisal_result.posterior_beta)
+            )
             logger.info(
                 f"  Surprisal: prior_mean={prior_mean:.3f}, posterior_mean={posterior_mean:.3f}, "
                 f"BS={surprisal_result.bayesian_surprise:.3f}, "

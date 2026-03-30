@@ -607,8 +607,10 @@ async def test_run_live_fsm_openrouter_belief_dispatch(tmp_path, monkeypatch):
     verified = db.get_node(node.id)
     assert verified.status == "verified"
     assert verified.bayesian_surprise > 0  # prior=0.8, posterior=0.3 -> KL > 0
-    assert verified.prior_mean == pytest.approx(0.8)
-    assert verified.posterior_mean == pytest.approx(0.3)
+    # prior_mean is derived from Beta params (includes Jeffreys prior),
+    # not raw scores, so it's alpha/(alpha+beta) ≈ 8.5/11 ≈ 0.773
+    assert verified.prior_mean == pytest.approx(0.773, abs=0.01)
+    assert verified.posterior_mean == pytest.approx(0.3, abs=0.02)
     db.close()
 
 

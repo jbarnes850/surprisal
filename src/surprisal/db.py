@@ -27,6 +27,7 @@ class Database:
                 context TEXT,
                 variables TEXT,
                 relationships TEXT,
+                finding TEXT,
                 cited_papers TEXT,
                 depth INTEGER DEFAULT 0,
                 visit_count INTEGER DEFAULT 0,
@@ -97,6 +98,9 @@ class Database:
         existing_cols = {row[1] for row in self.execute("PRAGMA table_info(nodes)").fetchall()}
         if "cited_papers" not in existing_cols:
             self.execute("ALTER TABLE nodes ADD COLUMN cited_papers TEXT")
+            self.conn.commit()
+        if "finding" not in existing_cols:
+            self.execute("ALTER TABLE nodes ADD COLUMN finding TEXT")
             self.conn.commit()
 
     # ------------------------------------------------------------------

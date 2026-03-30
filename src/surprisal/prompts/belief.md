@@ -17,7 +17,14 @@ Hypothesis: {hypothesis}
 - Negative or null evidence is still evidence. Do not treat “some output exists” as support.
 - If the evidence is weak, inconclusive, invalid, or off-target, lean toward lower confidence rather than granting support the experiment did not earn.
 - If the evidence directly and credibly supports the claim, express higher confidence.
-- Use the full range of the scale. Reserve “definitely_true” and “definitely_false” for cases with strong justification.
+
+## Calibration
+
+- Most novel scientific hypotheses are wrong or inconclusive. Default toward “uncertain” for untested or speculative claims.
+- A plausible-sounding hypothesis is NOT the same as a well-supported one. Plausibility alone warrants “uncertain” or at most “maybe_true”.
+- Reserve “definitely_true” for claims with overwhelming, replicated evidence (e.g., established physical laws).
+- Reserve “definitely_false” for claims that contradict well-established evidence.
+- Base rates matter: in a typical research domain, fewer than 20% of novel hypotheses survive replication.
 
 ## Output Format
 

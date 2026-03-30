@@ -126,9 +126,33 @@ Live config knobs:
 | `sandbox.network` | `true` | Allow public network access in the sandbox |
 | `sandbox.hf_flavor` | `a10g-small` | HF Jobs hardware flavor |
 | `sandbox.hf_timeout` | `2h` | HF Jobs timeout |
+| `belief.provider` | `claude` | Belief elicitation provider: `claude` (Likert sampling) or `openrouter` (logprob-based) |
+| `belief.model` | `""` | OpenRouter model ID for belief elicitation (e.g., `minimax/minimax-m2.5`) |
+| `belief.samples` | `30` | Samples per prior and posterior belief phase |
+| `belief.kl_scale` | `5.0` | KL divergence scaling factor for Bayesian surprise |
+| `belief.evidence_weight` | `2.0` | Evidence weight for posterior Beta fitting |
 | `credentials.wandb_api_key` | `""` | Optional W&B API key |
 | `credentials.hf_token` | `""` | Optional HuggingFace token |
 | `credentials.claude_oauth_token` | `""` | Cached Claude OAuth token for Docker runner (auto-prompted on first run) |
+
+## Belief calibration
+
+Surprisal computes Bayesian surprise by comparing prior and posterior belief distributions. Two providers are available:
+
+- **Claude** (default): Samples Likert-scale judgments (`definitely_true` through `definitely_false`) via concurrent Claude calls. Higher fidelity but more API calls.
+- **OpenRouter**: Single-call logprob-based estimation. Faster and cheaper. Requires an OpenRouter API key.
+
+To use OpenRouter belief elicitation:
+
+```bash
+cp .env.example .env
+# Add your OpenRouter API key to .env
+
+uv run surprisal config --set belief.provider openrouter
+uv run surprisal config --set belief.model minimax/minimax-m2.5
+```
+
+Prior beliefs are clamped to [0.1, 0.9] to prevent degenerate Beta distributions from overconfident models. A calibration warning is logged when clamping shifts the prior mean by more than 0.05.
 
 ## Literature grounding
 

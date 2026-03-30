@@ -55,7 +55,7 @@ def test_export_markdown(tmp_db):
     md = export_markdown(tmp_db, top=2)
     assert "# AutoDiscovery Results" in md
     assert "High surprisal hypothesis" in md
-    assert "**Bayesian Surprise:** 2.500" in md
+    assert "**Bayesian Surprise:** 2.500 (prior: 0.72 → posterior: 0.28)" in md
 
 
 def test_export_training_data(tmp_db):
@@ -79,6 +79,38 @@ def test_export_json_includes_cited_papers(tmp_db):
     result = export_json(tmp_db)
     hyp = result["hypotheses"][0]
     assert "cited_papers" in hyp
+
+
+def test_export_markdown_zero_surprise_not_na(tmp_db):
+    """BS=0.0 should render as '0.000', not 'N/A' (truthiness bug)."""
+    _seed_nodes(tmp_db)
+    md = export_markdown(tmp_db)
+    assert "**Bayesian Surprise:** 0.000" in md
+
+
+def test_export_markdown_includes_finding(tmp_db):
+    tmp_db.insert_node(Node(
+        id="n_finding", exploration_id="e",
+        hypothesis="Token-loss statistics do not predict quality",
+        finding="CV, skewness, kurtosis show |r| < 0.07. F-test p = 0.37.",
+        status="verified", bayesian_surprise=4.1, depth=2,
+        prior_mean=0.65, posterior_mean=0.45,
+    ))
+    md = export_markdown(tmp_db)
+    assert "Token-loss statistics do not predict quality" in md
+    assert "**Finding:** CV, skewness, kurtosis show |r| < 0.07" in md
+
+
+def test_export_json_includes_finding(tmp_db):
+    tmp_db.insert_node(Node(
+        id="n_finding2", exploration_id="e",
+        hypothesis="Short title",
+        finding="Detailed result with p-values",
+        status="verified", bayesian_surprise=1.0, depth=1,
+    ))
+    result = export_json(tmp_db)
+    hyp = result["hypotheses"][0]
+    assert hyp["finding"] == "Detailed result with p-values"
 
 
 def test_export_markdown_includes_citations(tmp_db):

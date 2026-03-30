@@ -1,6 +1,8 @@
+import logging
 from dataclasses import dataclass
 from scipy.special import betaln, digamma
 
+logger = logging.getLogger("surprisal")
 
 LIKERT_MAP: dict[str, float] = {
     "definitely_true": 1.0,
@@ -9,6 +11,10 @@ LIKERT_MAP: dict[str, float] = {
     "maybe_false": 0.25,
     "definitely_false": 0.0,
 }
+
+# Prior probability bounds — no hypothesis starts as "certain"
+PRIOR_CLAMP_MIN = 0.1
+PRIOR_CLAMP_MAX = 0.9
 
 
 @dataclass
@@ -19,6 +25,22 @@ class SurprisalResult:
     posterior_beta: float
     bayesian_surprise: float
     kl_raw: float
+
+
+def clamp_prior_scores(scores: list[float],
+                       clamp_min: float = PRIOR_CLAMP_MIN,
+                       clamp_max: float = PRIOR_CLAMP_MAX) -> list[float]:
+    """Clamp prior belief scores away from extremes.
+    Prevents degenerate Beta distributions from overconfident priors."""
+    clamped = [max(clamp_min, min(clamp_max, s)) for s in scores]
+    raw_mean = sum(scores) / len(scores) if scores else 0.5
+    clamped_mean = sum(clamped) / len(clamped) if clamped else 0.5
+    if abs(raw_mean - clamped_mean) > 0.05:
+        logger.warning(
+            f"Prior clamped: raw_mean={raw_mean:.3f} → clamped_mean={clamped_mean:.3f}. "
+            f"Belief agent may be overconfident."
+        )
+    return clamped
 
 
 def estimate_beta_from_likert(scores: list[float],
@@ -58,11 +80,21 @@ def compute_surprisal(prior_scores: list[float],
                        evidence_weight: float = 2.0,
                        kl_scale: float = 5.0) -> SurprisalResult:
     """Compute surprisal from Likert belief scores.
-    Prior scores use unit weight; posterior scores use evidence_weight."""
-    prior_alpha, prior_beta = estimate_beta_from_likert(prior_scores)
+    Prior scores are clamped to [0.1, 0.9] to prevent degenerate distributions.
+    Posterior scores use evidence_weight."""
+    clamped_prior = clamp_prior_scores(prior_scores)
+    prior_alpha, prior_beta = estimate_beta_from_likert(clamped_prior)
     posterior_alpha, posterior_beta = estimate_beta_from_likert(
         posterior_scores, evidence_weight,
     )
+    # Calibration diagnostic
+    prior_mean = prior_alpha / (prior_alpha + prior_beta)
+    if prior_mean > 0.9 or prior_mean < 0.1:
+        logger.warning(
+            f"Prior mean {prior_mean:.3f} is extreme despite clamping "
+            f"(alpha={prior_alpha:.2f}, beta={prior_beta:.2f}). "
+            f"Check belief agent calibration."
+        )
     kl_raw = kl_divergence_beta(posterior_alpha, posterior_beta,
                                  prior_alpha, prior_beta)
     bs = kl_raw / kl_scale
