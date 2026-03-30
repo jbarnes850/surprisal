@@ -114,7 +114,7 @@ def _forked_belief_session_args(session_id: str | None) -> dict[str, object]:
     }
 
 
-async def _run_belief_batch(
+async def _run_belief_batch_claude(
     agent,
     prompt: str,
     n: int,
@@ -124,8 +124,11 @@ async def _run_belief_batch(
     phase: str,
     workspace: Path,
     progress_callback: ProgressCallback | None = None,
-) -> int:
-    """Run n belief samples concurrently. Returns count of True beliefs."""
+) -> list[float] | bool:
+    """Run n Likert belief samples concurrently via Claude.
+    Returns list of float scores (0.0-1.0), or False if _fail_node was called."""
+    from surprisal.bayesian import LIKERT_MAP
+
     emit_progress(progress_callback, f"Node {node_id}: sampling {n} {phase} beliefs concurrently.")
 
     async def _sample(i: int) -> tuple[int, AgentResult]:
@@ -139,28 +142,198 @@ async def _run_belief_batch(
 
     results = await asyncio.gather(*[_sample(i) for i in range(n)])
 
-    k = 0
+    scores: list[float] = []
     for i, result in results:
         _record_invocation(db, node_id, f"belief_elicitation_{phase}", "claude", prompt, result)
         data, stage_error = _extract_stage_json(result, f"belief_elicitation_{phase}")
         if stage_error:
             return _fail_node(db, node_id, "belief_elicitation", stage_error)
-        if "believes_hypothesis" not in data or not isinstance(data["believes_hypothesis"], bool):
+        belief_value = data.get("belief", "")
+        if not isinstance(belief_value, str) or belief_value not in LIKERT_MAP:
             return _fail_node(
                 db, node_id, "belief_elicitation",
-                f"belief_elicitation_{phase} failed: missing boolean believes_hypothesis",
+                f"belief_elicitation_{phase} failed: invalid belief value '{belief_value}', "
+                f"expected one of {list(LIKERT_MAP.keys())}",
             )
-        believes = data["believes_hypothesis"]
-        if believes:
-            k += 1
+        score = LIKERT_MAP[belief_value]
+        scores.append(score)
         db.insert_belief_sample(BeliefSample(
             node_id=node_id, phase=phase,
-            sample_index=i, believes_hypothesis=bool(believes),
+            sample_index=i, believes_hypothesis=score,
             raw_response=result.raw[:500],
         ))
 
-    emit_progress(progress_callback, f"Node {node_id}: {phase} belief complete — {k}/{n} positive.")
-    return k
+    mean_score = sum(scores) / len(scores) if scores else 0.5
+    emit_progress(
+        progress_callback,
+        f"Node {node_id}: {phase} belief complete — mean={mean_score:.2f} ({len(scores)} samples).",
+    )
+    return scores
+
+
+async def _run_belief_logprob(
+    hypothesis: str,
+    evidence: str,
+    config: AutoDiscoveryConfig,
+    db: Database,
+    node_id: str,
+    progress_callback: ProgressCallback | None = None,
+) -> tuple[float | None, float | None]:
+    """Logprob-based belief estimation via OpenRouter.
+    Returns (prior_prob, posterior_prob) or (None, None) on failure."""
+    import os
+    import urllib.request
+    import urllib.error
+    from surprisal.bayesian import LIKERT_MAP
+
+    api_key = config.belief.api_key or os.environ.get("OPENROUTER_API_KEY", "")
+    if not api_key:
+        _fail_node(db, node_id, "belief_elicitation", "No OpenRouter API key configured")
+        return None, None
+
+    model = config.belief.model or "minimax/minimax-m2.7"
+
+    system_prompt = (
+        "You are a Bayesian reasoner making a graded epistemic judgment about a hypothesis. "
+        "Respond with exactly one word from: definitely_true, maybe_true, uncertain, maybe_false, definitely_false"
+    )
+
+    # Positive-leaning tokens and their Likert scores
+    positive_tokens = {"definitely_true", "maybe_true", "definitely", "maybe_t"}
+    negative_tokens = {"definitely_false", "maybe_false", "maybe_f"}
+    neutral_tokens = {"uncertain"}
+
+    async def _call_openrouter(user_content: str) -> float | None:
+        payload = json.dumps({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            "logprobs": True,
+            "top_logprobs": 5,
+            "max_tokens": 20,
+            "temperature": 0.0,
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/chat/completions",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            method="POST",
+        )
+
+        loop = asyncio.get_event_loop()
+        try:
+            response_data = await loop.run_in_executor(
+                None,
+                lambda: urllib.request.urlopen(req, timeout=30).read(),
+            )
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+            logger.error(f"OpenRouter API call failed: {exc}")
+            return None
+
+        try:
+            resp = json.loads(response_data)
+        except json.JSONDecodeError:
+            logger.error("OpenRouter returned non-JSON response")
+            return None
+
+        # Extract logprobs from response
+        choices = resp.get("choices", [])
+        if not choices:
+            logger.error("OpenRouter returned no choices")
+            return None
+
+        logprobs_data = choices[0].get("logprobs", {})
+        content_logprobs = logprobs_data.get("content", [])
+        if not content_logprobs:
+            # Fallback: parse the text response directly
+            text = choices[0].get("message", {}).get("content", "").strip().lower()
+            if text in LIKERT_MAP:
+                return LIKERT_MAP[text]
+            logger.warning(f"OpenRouter returned no logprobs, text='{text}'")
+            return 0.5
+
+        # Aggregate logprobs across first few token positions
+        import math
+        positive_logprob = float("-inf")
+        negative_logprob = float("-inf")
+        neutral_logprob = float("-inf")
+
+        for token_pos in content_logprobs[:3]:
+            top_logprobs = token_pos.get("top_logprobs", [])
+            for entry in top_logprobs:
+                token = entry.get("token", "").strip().lower().replace("_", "_")
+                lp = entry.get("logprob", float("-inf"))
+                if any(pos in token for pos in positive_tokens):
+                    positive_logprob = max(positive_logprob, lp)
+                elif any(neg in token for neg in negative_tokens):
+                    negative_logprob = max(negative_logprob, lp)
+                elif any(neut in token for neut in neutral_tokens):
+                    neutral_logprob = max(neutral_logprob, lp)
+
+        # Convert to probabilities via softmax
+        max_lp = max(positive_logprob, negative_logprob, neutral_logprob)
+        if max_lp == float("-inf"):
+            # No recognizable tokens found; fall back to text
+            text = choices[0].get("message", {}).get("content", "").strip().lower()
+            if text in LIKERT_MAP:
+                return LIKERT_MAP[text]
+            return 0.5
+
+        def _safe_exp(x: float) -> float:
+            return math.exp(x - max_lp) if x != float("-inf") else 0.0
+
+        p_pos = _safe_exp(positive_logprob)
+        p_neg = _safe_exp(negative_logprob)
+        p_neut = _safe_exp(neutral_logprob)
+        total = p_pos + p_neg + p_neut
+        if total == 0:
+            return 0.5
+
+        # Weighted score: positive=1.0, neutral=0.5, negative=0.0
+        prob = (p_pos * 1.0 + p_neut * 0.5 + p_neg * 0.0) / total
+        return prob
+
+    emit_progress(progress_callback, f"Node {node_id}: OpenRouter logprob belief (prior).")
+
+    # Prior call (hypothesis only)
+    prior_prob = await _call_openrouter(f"Hypothesis: {hypothesis}")
+    if prior_prob is None:
+        _fail_node(db, node_id, "belief_elicitation", "OpenRouter prior call failed")
+        return None, None
+
+    db.insert_belief_sample(BeliefSample(
+        node_id=node_id, phase="prior",
+        sample_index=0, believes_hypothesis=prior_prob,
+        raw_response=f"openrouter_logprob:{prior_prob:.4f}",
+    ))
+
+    emit_progress(progress_callback, f"Node {node_id}: OpenRouter logprob belief (posterior).")
+
+    # Posterior call (hypothesis + evidence)
+    posterior_prob = await _call_openrouter(
+        f"Hypothesis: {hypothesis}\n\nExperimental Evidence:\n{evidence}"
+    )
+    if posterior_prob is None:
+        _fail_node(db, node_id, "belief_elicitation", "OpenRouter posterior call failed")
+        return None, None
+
+    db.insert_belief_sample(BeliefSample(
+        node_id=node_id, phase="posterior",
+        sample_index=0, believes_hypothesis=posterior_prob,
+        raw_response=f"openrouter_logprob:{posterior_prob:.4f}",
+    ))
+
+    emit_progress(
+        progress_callback,
+        f"Node {node_id}: logprob belief complete — prior={prior_prob:.3f}, posterior={posterior_prob:.3f}.",
+    )
+    return prior_prob, posterior_prob
 
 
 def _unwrap_json_payload(parsed: object) -> object:
@@ -801,41 +974,69 @@ async def run_live_fsm(
         # ── Belief Elicitation (concurrent) ──
         elif state == "belief_elicitation":
             node = db.get_node(node_id)  # refresh
-            n_samples = config.mcts.belief_samples
+            n_samples = config.belief.samples
             hypothesis_text = node.hypothesis
+            evidence_weight = config.belief.evidence_weight
+            kl_scale = config.belief.kl_scale
 
-            # Prior elicitation (no evidence)
-            prior_prompt = _belief_prompt(hypothesis_text)
-            k_prior_result = await _run_belief_batch(
-                research_agent, prior_prompt, n_samples,
-                research_session_id, db, node_id, "prior", workspace, progress_callback,
-            )
-            if isinstance(k_prior_result, bool):
-                return k_prior_result  # _fail_node was called
-            k_prior = k_prior_result
+            if config.belief.provider == "openrouter":
+                # Phase 2: logprob-based belief via OpenRouter
+                prior_prob, posterior_prob = await _run_belief_logprob(
+                    hypothesis_text,
+                    evidence=(
+                        f"Execution Output:\n{experiment_output[:2000]}\n\n"
+                        f"Analysis:\n{analysis_summary}"
+                    ),
+                    config=config,
+                    db=db,
+                    node_id=node_id,
+                    progress_callback=progress_callback,
+                )
+                if prior_prob is None:
+                    return _fail_node(db, node_id, "belief_elicitation",
+                                      "OpenRouter logprob belief failed")
+                # Convert single probabilities to virtual sample scores
+                virtual_n = n_samples
+                prior_scores = [prior_prob] * virtual_n
+                posterior_scores = [posterior_prob] * virtual_n
+            else:
+                # Claude Likert path
+                prior_prompt = _belief_prompt(hypothesis_text)
+                prior_result = await _run_belief_batch_claude(
+                    research_agent, prior_prompt, n_samples,
+                    research_session_id, db, node_id, "prior", workspace, progress_callback,
+                )
+                if isinstance(prior_result, bool):
+                    return prior_result
+                prior_scores = prior_result
 
-            # Posterior elicitation (with evidence)
-            posterior_prompt = _belief_prompt(
-                hypothesis_text,
-                evidence=(
-                    f"Execution Output:\n{experiment_output[:2000]}\n\n"
-                    f"Analysis:\n{analysis_summary}"
-                ),
-            )
-            k_post_result = await _run_belief_batch(
-                research_agent, posterior_prompt, n_samples,
-                research_session_id, db, node_id, "posterior", workspace, progress_callback,
-            )
-            if isinstance(k_post_result, bool):
-                return k_post_result  # _fail_node was called
-            k_post = k_post_result
+                posterior_prompt = _belief_prompt(
+                    hypothesis_text,
+                    evidence=(
+                        f"Execution Output:\n{experiment_output[:2000]}\n\n"
+                        f"Analysis:\n{analysis_summary}"
+                    ),
+                )
+                posterior_result = await _run_belief_batch_claude(
+                    research_agent, posterior_prompt, n_samples,
+                    research_session_id, db, node_id, "posterior", workspace, progress_callback,
+                )
+                if isinstance(posterior_result, bool):
+                    return posterior_result
+                posterior_scores = posterior_result
 
             # Compute surprisal
-            surprisal_result = compute_surprisal(k_prior, k_post, n_samples)
+            surprisal_result = compute_surprisal(
+                prior_scores, posterior_scores,
+                evidence_weight=evidence_weight,
+                kl_scale=kl_scale,
+            )
+            prior_mean = sum(prior_scores) / len(prior_scores) if prior_scores else 0.5
+            posterior_mean = sum(posterior_scores) / len(posterior_scores) if posterior_scores else 0.5
             logger.info(
-                f"  Surprisal: k_prior={k_prior}, k_post={k_post}, "
+                f"  Surprisal: prior_mean={prior_mean:.3f}, posterior_mean={posterior_mean:.3f}, "
                 f"BS={surprisal_result.bayesian_surprise:.3f}, "
-                f"shifted={surprisal_result.belief_shifted}"
+                f"KL_raw={surprisal_result.kl_raw:.3f}"
             )
 
             db.update_node(node_id,
@@ -843,23 +1044,25 @@ async def run_live_fsm(
                 prior_beta=surprisal_result.prior_beta,
                 posterior_alpha=surprisal_result.posterior_alpha,
                 posterior_beta=surprisal_result.posterior_beta,
-                k_prior=k_prior,
-                k_post=k_post,
-                n_belief_samples=n_samples,
+                prior_mean=prior_mean,
+                posterior_mean=posterior_mean,
+                n_belief_samples=len(prior_scores),
                 bayesian_surprise=surprisal_result.bayesian_surprise,
-                belief_shifted=surprisal_result.belief_shifted,
             )
 
             # Save belief summary
             (exp_dir / "belief.json").write_text(json.dumps({
-                "k_prior": k_prior, "k_post": k_post, "n": n_samples,
+                "prior_mean": prior_mean,
+                "posterior_mean": posterior_mean,
+                "n": len(prior_scores),
                 "prior_alpha": surprisal_result.prior_alpha,
                 "prior_beta": surprisal_result.prior_beta,
                 "posterior_alpha": surprisal_result.posterior_alpha,
                 "posterior_beta": surprisal_result.posterior_beta,
                 "bayesian_surprise": surprisal_result.bayesian_surprise,
-                "belief_shifted": surprisal_result.belief_shifted,
-                "surprisal": surprisal_result.surprisal,
+                "kl_raw": surprisal_result.kl_raw,
+                "evidence_weight": evidence_weight,
+                "provider": config.belief.provider,
             }, indent=2))
 
             last_response = FSMResponse(error=False)
