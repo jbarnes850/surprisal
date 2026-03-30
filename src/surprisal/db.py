@@ -33,13 +33,12 @@ class Database:
                 virtual_loss INTEGER DEFAULT 0,
                 surprisal_sum REAL DEFAULT 0.0,
                 bayesian_surprise REAL,
-                belief_shifted BOOLEAN,
                 prior_alpha REAL,
                 prior_beta REAL,
                 posterior_alpha REAL,
                 posterior_beta REAL,
-                k_prior INTEGER,
-                k_post INTEGER,
+                prior_mean REAL,
+                posterior_mean REAL,
                 n_belief_samples INTEGER DEFAULT 10,
                 status TEXT DEFAULT 'pending',
                 branch_id TEXT,
@@ -59,7 +58,7 @@ class Database:
                 node_id TEXT NOT NULL,
                 phase TEXT NOT NULL,
                 sample_index INTEGER NOT NULL,
-                believes_hypothesis BOOLEAN NOT NULL,
+                believes_hypothesis REAL NOT NULL,
                 raw_response TEXT,
                 created_at TIMESTAMP
             );
@@ -118,9 +117,6 @@ class Database:
 
     def _row_to_node(self, row: sqlite3.Row) -> Node:
         d = dict(row)
-        # SQLite stores booleans as 0/1 integers; convert back
-        if d.get("belief_shifted") is not None:
-            d["belief_shifted"] = bool(d["belief_shifted"])
         return Node(**d)
 
     def get_node(self, id: str) -> Optional[Node]:
@@ -189,7 +185,7 @@ class Database:
                 node_id=r["node_id"],
                 phase=r["phase"],
                 sample_index=r["sample_index"],
-                believes_hypothesis=bool(r["believes_hypothesis"]),
+                believes_hypothesis=float(r["believes_hypothesis"]),
                 raw_response=r["raw_response"],
                 created_at=r["created_at"],
             )
@@ -248,7 +244,7 @@ class Database:
 
     def count_surprisals(self, exploration_id: str) -> int:
         row = self.conn.execute(
-            "SELECT COUNT(*) FROM nodes WHERE exploration_id = ? AND belief_shifted = 1",
+            "SELECT COUNT(*) FROM nodes WHERE exploration_id = ? AND bayesian_surprise > 0",
             (exploration_id,),
         ).fetchone()
         return row[0]

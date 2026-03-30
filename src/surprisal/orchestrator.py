@@ -230,7 +230,7 @@ async def worker_loop(
 
         # Backpropagate surprisal
         node = db.get_node(child_id)
-        surprisal_value = 1 if node.belief_shifted else 0
+        surprisal_value = node.bayesian_surprise or 0.0
         backpropagate(db, child_id, surprisal_value)
         logger.info(
             f"Node {child_id} completed: success={success}, "

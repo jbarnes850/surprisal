@@ -19,13 +19,12 @@ class Node:
     virtual_loss: int = 0
     surprisal_sum: float = 0.0
     bayesian_surprise: Optional[float] = None
-    belief_shifted: Optional[bool] = None
     prior_alpha: Optional[float] = None
     prior_beta: Optional[float] = None
     posterior_alpha: Optional[float] = None
     posterior_beta: Optional[float] = None
-    k_prior: Optional[int] = None
-    k_post: Optional[int] = None
+    prior_mean: Optional[float] = None
+    posterior_mean: Optional[float] = None
     n_belief_samples: int = 10
     status: str = "pending"
     branch_id: Optional[str] = None
@@ -45,7 +44,7 @@ class BeliefSample:
     node_id: str
     phase: str  # 'prior' or 'posterior'
     sample_index: int
-    believes_hypothesis: bool
+    believes_hypothesis: float
     raw_response: Optional[str] = None
     id: Optional[int] = None
     created_at: Optional[datetime] = None

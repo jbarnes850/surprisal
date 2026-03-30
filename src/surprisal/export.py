@@ -18,13 +18,12 @@ def export_json(db: Database, top: int = None, min_surprisal: float = None) -> d
                 "relationships": n.relationships,
                 "depth": n.depth,
                 "bayesian_surprise": n.bayesian_surprise,
-                "belief_shifted": n.belief_shifted,
                 "prior_alpha": n.prior_alpha,
                 "prior_beta": n.prior_beta,
                 "posterior_alpha": n.posterior_alpha,
                 "posterior_beta": n.posterior_beta,
-                "k_prior": n.k_prior,
-                "k_post": n.k_post,
+                "prior_mean": n.prior_mean,
+                "posterior_mean": n.posterior_mean,
                 "cited_papers": n.cited_papers,
                 "status": n.status,
             }
@@ -39,9 +38,9 @@ def export_csv(db: Database, top: int = None, min_surprisal: float = None) -> st
     nodes = _query_verified(db, top, min_surprisal)
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id", "hypothesis", "depth", "bayesian_surprise", "belief_shifted", "context"])
+    writer.writerow(["id", "hypothesis", "depth", "bayesian_surprise", "prior_mean", "posterior_mean", "context"])
     for n in nodes:
-        writer.writerow([n.id, n.hypothesis, n.depth, n.bayesian_surprise, n.belief_shifted, n.context])
+        writer.writerow([n.id, n.hypothesis, n.depth, n.bayesian_surprise, n.prior_mean, n.posterior_mean, n.context])
     return output.getvalue()
 
 
@@ -55,7 +54,8 @@ def export_markdown(db: Database, top: int = None, min_surprisal: float = None) 
         bs = f"{n.bayesian_surprise:.3f}" if n.bayesian_surprise else "N/A"
         lines.append(f"## {i}. {n.hypothesis}")
         lines.append(f"- **Bayesian Surprise:** {bs}")
-        lines.append(f"- **Belief Shifted:** {n.belief_shifted}")
+        lines.append(f"- **Prior Mean:** {n.prior_mean}")
+        lines.append(f"- **Posterior Mean:** {n.posterior_mean}")
         lines.append(f"- **Depth:** {n.depth}")
         if n.cited_papers:
             try:
@@ -84,8 +84,6 @@ def export_training_data(db: Database) -> str:
             "relationships": n.relationships,
             "depth": n.depth,
             "bayesian_surprise": n.bayesian_surprise,
-            "belief_shifted": n.belief_shifted,
-            "surprisal": 1 if n.belief_shifted else 0,
             "prior_alpha": n.prior_alpha,
             "prior_beta": n.prior_beta,
             "posterior_alpha": n.posterior_alpha,

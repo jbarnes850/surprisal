@@ -20,9 +20,19 @@ class MCTSConfig:
     k_progressive: float = 1.0
     alpha_progressive: float = 0.5
     max_depth: int = 30
-    belief_samples: int = 10
     virtual_loss: int = 2
     dedup_interval: int = 50
+
+
+@dataclass
+class BeliefConfig:
+    provider: str = "claude"  # "claude" or "openrouter"
+    model: str = ""  # openrouter model ID, empty = use claude
+    api_key: str = ""  # openrouter API key
+    kl_scale: float = 5.0
+    evidence_weight: float = 2.0
+    samples: int = 30
+    temperature: float = 1.0
 
 
 @dataclass
@@ -62,6 +72,7 @@ class AutoDiscoveryConfig:
     agents: AgentsConfig = field(default_factory=AgentsConfig)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     credentials: CredentialsConfig = field(default_factory=CredentialsConfig)
+    belief: BeliefConfig = field(default_factory=BeliefConfig)
 
     def set(self, key: str, value: str) -> None:
         section_name, _, field_name = key.partition(".")
@@ -96,7 +107,7 @@ def load_config(path: Path) -> AutoDiscoveryConfig:
         return cfg
     with open(path, "rb") as f:
         data = tomllib.load(f)
-    for section_name in ("general", "mcts", "agents", "sandbox", "credentials"):
+    for section_name in ("general", "mcts", "agents", "sandbox", "credentials", "belief"):
         if section_name in data:
             section = getattr(cfg, section_name)
             for k, v in data[section_name].items():
@@ -107,7 +118,7 @@ def load_config(path: Path) -> AutoDiscoveryConfig:
 
 def save_config(cfg: AutoDiscoveryConfig, path: Path) -> None:
     lines = []
-    for section_name in ("general", "mcts", "agents", "sandbox", "credentials"):
+    for section_name in ("general", "mcts", "agents", "sandbox", "credentials", "belief"):
         section = getattr(cfg, section_name)
         lines.append(f"[{section_name}]")
         for f in fields(section):

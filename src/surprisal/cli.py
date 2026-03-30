@@ -249,7 +249,7 @@ def status(tree, as_json, exp_id):
     verified = db.execute("SELECT COUNT(*) FROM nodes WHERE status='verified'").fetchone()[0]
     expanding = db.execute("SELECT COUNT(*) FROM nodes WHERE status='expanding'").fetchone()[0]
     failed = db.execute("SELECT COUNT(*) FROM nodes WHERE status='failed'").fetchone()[0]
-    surprisals = db.execute("SELECT COUNT(*) FROM nodes WHERE belief_shifted=1").fetchone()[0]
+    surprisals = db.execute("SELECT COUNT(*) FROM nodes WHERE bayesian_surprise > 0").fetchone()[0]
     max_depth = db.execute("SELECT MAX(depth) FROM nodes").fetchone()[0] or 0
 
     if as_json:
