@@ -193,7 +193,7 @@ async def _run_belief_logprob(
         _fail_node(db, node_id, "belief_elicitation", "No OpenRouter API key configured")
         return None, None
 
-    model = config.belief.model or "minimax/minimax-m2.7"
+    model = config.belief.model or "minimax/minimax-m2.5"
 
     system_prompt = (
         "You are a Bayesian reasoner making a graded epistemic judgment about a hypothesis. "
@@ -211,6 +211,7 @@ async def _run_belief_logprob(
             "top_logprobs": 5,
             "max_tokens": 2000,
             "temperature": 0.0,
+            "provider": {"require_parameters": True},
         }).encode("utf-8")
 
         req = urllib.request.Request(
