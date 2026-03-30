@@ -149,6 +149,8 @@ async def _run_belief_batch_claude(
         if stage_error:
             return _fail_node(db, node_id, "belief_elicitation", stage_error)
         belief_value = data.get("belief", "")
+        if isinstance(belief_value, str):
+            belief_value = belief_value.strip().lower()
         if not isinstance(belief_value, str) or belief_value not in LIKERT_MAP:
             return _fail_node(
                 db, node_id, "belief_elicitation",
@@ -198,11 +200,6 @@ async def _run_belief_logprob(
         "Respond with exactly one word from: definitely_true, maybe_true, uncertain, maybe_false, definitely_false"
     )
 
-    # Positive-leaning tokens and their Likert scores
-    positive_tokens = {"definitely_true", "maybe_true", "definitely", "maybe_t"}
-    negative_tokens = {"definitely_false", "maybe_false", "maybe_f"}
-    neutral_tokens = {"uncertain"}
-
     async def _call_openrouter(user_content: str) -> float | None:
         payload = json.dumps({
             "model": model,
@@ -242,7 +239,11 @@ async def _run_belief_logprob(
             logger.error("OpenRouter returned non-JSON response")
             return None
 
-        # Extract logprobs from response
+        # Check for API-level error in 200 response
+        if resp.get("error"):
+            logger.error(f"OpenRouter API error: {resp['error']}")
+            return None
+
         choices = resp.get("choices", [])
         if not choices:
             logger.error("OpenRouter returned no choices")
@@ -251,53 +252,46 @@ async def _run_belief_logprob(
         logprobs_data = choices[0].get("logprobs", {})
         content_logprobs = logprobs_data.get("content", [])
         if not content_logprobs:
-            # Fallback: parse the text response directly
+            # No logprobs: parse the text response as exact Likert label
             text = choices[0].get("message", {}).get("content", "").strip().lower()
             if text in LIKERT_MAP:
                 return LIKERT_MAP[text]
-            logger.warning(f"OpenRouter returned no logprobs, text='{text}'")
-            return 0.5
+            logger.error(f"OpenRouter returned no logprobs and unrecognized text='{text}'")
+            return None
 
-        # Aggregate logprobs across first few token positions
+        # Score each Likert label by its best logprob across token positions.
+        # Use exact-match on full labels to avoid substring confusion
+        # (e.g. "definitely" matching both "definitely_true" and "definitely_false").
         import math
-        positive_logprob = float("-inf")
-        negative_logprob = float("-inf")
-        neutral_logprob = float("-inf")
-
+        label_logprobs: dict[str, float] = {}
         for token_pos in content_logprobs[:3]:
             top_logprobs = token_pos.get("top_logprobs", [])
             for entry in top_logprobs:
-                token = entry.get("token", "").strip().lower().replace("_", "_")
+                token = entry.get("token", "").strip().lower()
                 lp = entry.get("logprob", float("-inf"))
-                if any(pos in token for pos in positive_tokens):
-                    positive_logprob = max(positive_logprob, lp)
-                elif any(neg in token for neg in negative_tokens):
-                    negative_logprob = max(negative_logprob, lp)
-                elif any(neut in token for neut in neutral_tokens):
-                    neutral_logprob = max(neutral_logprob, lp)
+                for label in LIKERT_MAP:
+                    if token == label:
+                        label_logprobs[label] = max(label_logprobs.get(label, float("-inf")), lp)
 
-        # Convert to probabilities via softmax
-        max_lp = max(positive_logprob, negative_logprob, neutral_logprob)
-        if max_lp == float("-inf"):
-            # No recognizable tokens found; fall back to text
+        if not label_logprobs:
+            # No exact Likert token matches; parse text response
             text = choices[0].get("message", {}).get("content", "").strip().lower()
             if text in LIKERT_MAP:
                 return LIKERT_MAP[text]
-            return 0.5
+            logger.error(f"OpenRouter logprobs contained no Likert tokens, text='{text}'")
+            return None
 
-        def _safe_exp(x: float) -> float:
-            return math.exp(x - max_lp) if x != float("-inf") else 0.0
+        # Softmax over matched labels, weighted by their Likert scores
+        max_lp = max(label_logprobs.values())
 
-        p_pos = _safe_exp(positive_logprob)
-        p_neg = _safe_exp(negative_logprob)
-        p_neut = _safe_exp(neutral_logprob)
-        total = p_pos + p_neg + p_neut
-        if total == 0:
-            return 0.5
+        weighted_sum = 0.0
+        total = 0.0
+        for label, lp in label_logprobs.items():
+            p = math.exp(lp - max_lp)
+            weighted_sum += p * LIKERT_MAP[label]
+            total += p
 
-        # Weighted score: positive=1.0, neutral=0.5, negative=0.0
-        prob = (p_pos * 1.0 + p_neut * 0.5 + p_neg * 0.0) / total
-        return prob
+        return weighted_sum / total if total > 0 else None
 
     emit_progress(progress_callback, f"Node {node_id}: OpenRouter logprob belief (prior).")
 
