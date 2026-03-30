@@ -209,7 +209,7 @@ async def _run_belief_logprob(
             ],
             "logprobs": True,
             "top_logprobs": 5,
-            "max_tokens": 20,
+            "max_tokens": 2000,
             "temperature": 0.0,
         }).encode("utf-8")
 
@@ -253,7 +253,7 @@ async def _run_belief_logprob(
         content_logprobs = logprobs_data.get("content", [])
         if not content_logprobs:
             # No logprobs: parse the text response as exact Likert label
-            text = choices[0].get("message", {}).get("content", "").strip().lower()
+            text = (choices[0].get("message", {}).get("content") or "").strip().lower()
             if text in LIKERT_MAP:
                 return LIKERT_MAP[text]
             logger.error(f"OpenRouter returned no logprobs and unrecognized text='{text}'")
@@ -275,7 +275,7 @@ async def _run_belief_logprob(
 
         if not label_logprobs:
             # No exact Likert token matches; parse text response
-            text = choices[0].get("message", {}).get("content", "").strip().lower()
+            text = (choices[0].get("message", {}).get("content") or "").strip().lower()
             if text in LIKERT_MAP:
                 return LIKERT_MAP[text]
             logger.error(f"OpenRouter logprobs contained no Likert tokens, text='{text}'")
