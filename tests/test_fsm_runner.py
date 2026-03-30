@@ -298,7 +298,7 @@ async def test_run_live_fsm_fails_on_belief_provider_error(tmp_path, monkeypatch
     workspace.mkdir()
 
     cfg = AutoDiscoveryConfig()
-    cfg.mcts.belief_samples = 1
+    cfg.belief.samples = 1
 
     research_responses = [
         _json_result({
@@ -355,7 +355,7 @@ async def test_run_live_fsm_passes_runner_system_prompt_to_backend(tmp_path, mon
     workspace.mkdir()
 
     cfg = AutoDiscoveryConfig()
-    cfg.mcts.belief_samples = 1
+    cfg.belief.samples = 1
 
     research_responses = [
         _json_result({
@@ -372,8 +372,8 @@ async def test_run_live_fsm_passes_runner_system_prompt_to_backend(tmp_path, mon
             "variables": ["x", "y"],
             "relationships": ["x predicts y"],
         }),
-        _json_result({"believes_hypothesis": False}),
-        _json_result({"believes_hypothesis": True}),
+        _json_result({"belief": "maybe_false"}),
+        _json_result({"belief": "maybe_true"}),
     ]
     code_responses = [
         _json_result({
@@ -464,7 +464,7 @@ async def test_run_live_fsm_reuses_branch_sessions_and_updates_latest_ids(tmp_pa
     )
 
     cfg = AutoDiscoveryConfig()
-    cfg.mcts.belief_samples = 1
+    cfg.belief.samples = 1
 
     research_responses = [
         _json_result({
@@ -481,8 +481,8 @@ async def test_run_live_fsm_reuses_branch_sessions_and_updates_latest_ids(tmp_pa
             "variables": ["x", "y"],
             "relationships": ["x predicts y"],
         }, session_id="claude-new"),
-        _json_result({"believes_hypothesis": False}, session_id="claude-new"),
-        _json_result({"believes_hypothesis": True}, session_id="claude-new"),
+        _json_result({"belief": "maybe_false"}, session_id="claude-new"),
+        _json_result({"belief": "maybe_true"}, session_id="claude-new"),
     ]
     code_responses = [
         _json_result({
@@ -541,4 +541,134 @@ async def test_run_live_fsm_reuses_branch_sessions_and_updates_latest_ids(tmp_pa
     assert sessions["code_session_id"] == "codex-new"
     assert sessions["code_provider"] == "codex"
     assert sessions["runner_claude_session_id"] == "runner-new"
+    db.close()
+
+
+@pytest.mark.asyncio
+async def test_run_live_fsm_openrouter_belief_dispatch(tmp_path, monkeypatch):
+    """When config.belief.provider='openrouter', belief uses _run_belief_logprob."""
+    db, node = _make_db_with_node(tmp_path)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    cfg = AutoDiscoveryConfig()
+    cfg.belief.provider = "openrouter"
+    cfg.belief.model = "minimax/minimax-m2.7"
+    cfg.belief.api_key = "test-key"
+    cfg.belief.samples = 10
+
+    research_responses = [
+        _json_result({
+            "hypothesis": "A signal predicts the outcome.",
+            "context": "test",
+            "variables": ["x"],
+            "relationships": ["x predicts y"],
+            "experiment_plan": "Run a test.",
+            "cited_papers": [],
+        }),
+        _json_result({
+            "hypothesis": "Formalized hypothesis.",
+            "context": "test",
+            "variables": ["x"],
+            "relationships": ["x predicts y"],
+        }),
+    ]
+    code_responses = [
+        _json_result({
+            "error": False,
+            "summary": "Produced a metric.",
+            "key_results": {"metric": "0.9"},
+            "visual_findings": "none",
+        }),
+        _json_result({
+            "error": False,
+            "assessment": "Valid.",
+        }),
+    ]
+    _patch_runtime(monkeypatch, research_responses, code_responses, [_backend_success])
+
+    # Mock _run_belief_logprob to return known probabilities
+    async def _fake_logprob(*args, **kwargs):
+        return 0.8, 0.3
+
+    monkeypatch.setattr("surprisal.fsm_runner._run_belief_logprob", _fake_logprob)
+
+    ok = await run_live_fsm(
+        node_id=node.id,
+        db=db,
+        config=cfg,
+        workspace=workspace,
+        domain="test domain",
+        branch_path=[node],
+        providers=ProviderStatus(claude_available=True, codex_available=True),
+    )
+
+    assert ok is True
+    verified = db.get_node(node.id)
+    assert verified.status == "verified"
+    assert verified.bayesian_surprise > 0  # prior=0.8, posterior=0.3 -> KL > 0
+    assert verified.prior_mean == pytest.approx(0.8)
+    assert verified.posterior_mean == pytest.approx(0.3)
+    db.close()
+
+
+@pytest.mark.asyncio
+async def test_run_live_fsm_openrouter_failure_fails_node(tmp_path, monkeypatch):
+    """When OpenRouter call fails, the node is marked failed."""
+    db, node = _make_db_with_node(tmp_path)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    cfg = AutoDiscoveryConfig()
+    cfg.belief.provider = "openrouter"
+    cfg.belief.api_key = "test-key"
+
+    research_responses = [
+        _json_result({
+            "hypothesis": "A signal predicts the outcome.",
+            "context": "test",
+            "variables": ["x"],
+            "relationships": ["x predicts y"],
+            "experiment_plan": "Run a test.",
+            "cited_papers": [],
+        }),
+        _json_result({
+            "hypothesis": "Formalized.",
+            "context": "test",
+            "variables": ["x"],
+            "relationships": ["x predicts y"],
+        }),
+    ]
+    code_responses = [
+        _json_result({
+            "error": False,
+            "summary": "Produced a metric.",
+            "key_results": {"metric": "0.9"},
+            "visual_findings": "none",
+        }),
+        _json_result({
+            "error": False,
+            "assessment": "Valid.",
+        }),
+    ]
+    _patch_runtime(monkeypatch, research_responses, code_responses, [_backend_success])
+
+    async def _fake_logprob_fail(*args, **kwargs):
+        return None, None
+
+    monkeypatch.setattr("surprisal.fsm_runner._run_belief_logprob", _fake_logprob_fail)
+
+    ok = await run_live_fsm(
+        node_id=node.id,
+        db=db,
+        config=cfg,
+        workspace=workspace,
+        domain="test domain",
+        branch_path=[node],
+        providers=ProviderStatus(claude_available=True, codex_available=True),
+    )
+
+    assert ok is False
+    failed = db.get_node(node.id)
+    assert failed.status == "failed"
     db.close()

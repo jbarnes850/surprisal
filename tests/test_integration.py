@@ -2,6 +2,7 @@
 
 import json
 from click.testing import CliRunner
+import pytest
 from surprisal.models import Node
 from surprisal.mcts import select_node, backpropagate
 from surprisal.bayesian import compute_surprisal
@@ -51,32 +52,34 @@ class TestSingleNodeLifecycle:
                      parent_id="root", depth=1, status="expanding")
         tmp_db.insert_node(child)
 
-        # Compute surprisal from mock belief samples (belief shifted)
-        result = compute_surprisal(k_prior=25, k_post=5, n=30)
-        assert result.surprisal == 1
-        assert result.belief_shifted is True
+        # Compute surprisal from mock Likert belief scores (shifted)
+        prior_scores = [0.75] * 10  # mostly maybe_true
+        posterior_scores = [0.25] * 10  # mostly maybe_false
+        result = compute_surprisal(prior_scores, posterior_scores)
+        assert result.bayesian_surprise > 0
+        assert result.kl_raw > 0
 
         # Update node with surprisal
         tmp_db.update_node("child1",
             status="verified",
             bayesian_surprise=result.bayesian_surprise,
-            belief_shifted=result.belief_shifted,
             prior_alpha=result.prior_alpha,
             prior_beta=result.prior_beta,
             posterior_alpha=result.posterior_alpha,
             posterior_beta=result.posterior_beta,
-            k_prior=25, k_post=5,
+            prior_mean=0.75,
+            posterior_mean=0.25,
             virtual_loss=0,
         )
 
-        # Backpropagate
-        backpropagate(tmp_db, "child1", result.surprisal)
+        # Backpropagate with continuous KL surprise
+        backpropagate(tmp_db, "child1", result.bayesian_surprise)
 
         # Verify tree state
         assert tmp_db.get_node("child1").visit_count == 1
-        assert tmp_db.get_node("child1").surprisal_sum == 1.0
+        assert tmp_db.get_node("child1").surprisal_sum > 0
         assert tmp_db.get_node("root").visit_count == 2  # was 1, now 2
-        assert tmp_db.get_node("root").surprisal_sum == 1.0
+        assert tmp_db.get_node("root").surprisal_sum > 0
 
     def test_no_surprisal_path(self, tmp_db):
         tmp_db.insert_node(Node(id="root", exploration_id="e", hypothesis="Root", visit_count=1))
@@ -84,19 +87,19 @@ class TestSingleNodeLifecycle:
                      parent_id="root", depth=1, status="expanding")
         tmp_db.insert_node(child)
 
-        result = compute_surprisal(k_prior=20, k_post=22, n=30)
-        assert result.surprisal == 0
-        assert result.belief_shifted is False
+        # Same scores, no evidence weighting difference
+        scores = [0.5] * 10
+        result = compute_surprisal(scores, scores, evidence_weight=1.0)
+        assert result.kl_raw == pytest.approx(0.0, abs=1e-10)
 
         tmp_db.update_node("child2", status="verified", virtual_loss=0,
-                           bayesian_surprise=result.bayesian_surprise,
-                           belief_shifted=result.belief_shifted)
-        backpropagate(tmp_db, "child2", result.surprisal)
+                           bayesian_surprise=result.bayesian_surprise)
+        backpropagate(tmp_db, "child2", result.bayesian_surprise)
 
         assert tmp_db.get_node("child2").visit_count == 1
-        assert tmp_db.get_node("child2").surprisal_sum == 0.0
+        assert tmp_db.get_node("child2").surprisal_sum == pytest.approx(0.0, abs=1e-10)
         assert tmp_db.get_node("root").visit_count == 2
-        assert tmp_db.get_node("root").surprisal_sum == 0.0
+        assert tmp_db.get_node("root").surprisal_sum == pytest.approx(0.0, abs=1e-10)
 
     def test_progressive_widening_after_visits(self, tmp_db):
         """After 4 visits to root, root can have 2 children."""
@@ -203,7 +206,6 @@ class TestCLIIntegration:
                 hypothesis="Verified smoke hypothesis",
                 status="verified",
                 virtual_loss=0,
-                belief_shifted=False,
                 bayesian_surprise=0.0,
             )
             return True

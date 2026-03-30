@@ -108,7 +108,7 @@ async def test_worker_loop_copies_memory_and_runs_dedup(tmp_path, monkeypatch):
     (root_ws / "memory" / "notes.md").write_text("carry me forward")
 
     async def fake_run_live_fsm(node_id, db, **kwargs):
-        db.update_node(node_id, status="verified", virtual_loss=0, belief_shifted=False)
+        db.update_node(node_id, status="verified", virtual_loss=0, bayesian_surprise=0.0)
         return True
 
     dedup_calls = []
@@ -161,7 +161,7 @@ async def test_run_exploration_surfaces_worker_failures(tmp_path, monkeypatch):
     db.insert_node(root)
 
     async def fake_run_live_fsm(node_id, db, **kwargs):
-        db.update_node(node_id, status="verified", virtual_loss=0, belief_shifted=False)
+        db.update_node(node_id, status="verified", virtual_loss=0, bayesian_surprise=0.0)
         return True
 
     def fake_deduplicate(db, max_distance=0.5, exploration_id=None):
@@ -217,7 +217,7 @@ async def test_worker_loop_dedups_once_per_completed_boundary(tmp_path, monkeypa
         db.insert_node(node)
 
     async def fake_run_live_fsm(node_id, db, **kwargs):
-        db.update_node(node_id, status="verified", virtual_loss=0, belief_shifted=False)
+        db.update_node(node_id, status="verified", virtual_loss=0, bayesian_surprise=0.0)
         return True
 
     dedup_calls = []

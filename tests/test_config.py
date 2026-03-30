@@ -18,10 +18,12 @@ def test_default_config_has_expected_values():
     assert cfg.mcts.k_progressive == 1.0
     assert cfg.mcts.alpha_progressive == 0.5
     assert cfg.mcts.max_depth == 30
-    assert cfg.mcts.belief_samples == 10
     assert cfg.mcts.virtual_loss == 2
     assert cfg.mcts.dedup_interval == 50
-    assert not hasattr(cfg.mcts, "belief_temperature")
+    assert cfg.belief.provider == "claude"
+    assert cfg.belief.samples == 30
+    assert cfg.belief.kl_scale == 5.0
+    assert cfg.belief.evidence_weight == 2.0
     assert cfg.agents.claude_model == "opus"
     assert cfg.agents.codex_model == "gpt-5.4"
     assert cfg.agents.max_turns == 20
@@ -100,8 +102,8 @@ def test_load_config_ignores_removed_sections(tmp_path):
     path = tmp_path / "config.toml"
     path.write_text(
         """
-[mcts]
-belief_samples = 12
+[belief]
+samples = 12
 
 [predictor]
 enabled = true
@@ -109,7 +111,7 @@ lambda_weight = 0.5
 """
     )
     loaded = load_config(path)
-    assert loaded.mcts.belief_samples == 12
+    assert loaded.belief.samples == 12
     assert not hasattr(loaded, "predictor")
 
 

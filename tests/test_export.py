@@ -7,13 +7,13 @@ def _seed_nodes(db):
     """Insert test nodes with varying surprisal."""
     nodes = [
         Node(id="n1", exploration_id="e", hypothesis="High surprisal hypothesis",
-             status="verified", bayesian_surprise=2.5, belief_shifted=True,
+             status="verified", bayesian_surprise=2.5,
              depth=1, context="test context", prior_alpha=23.0, prior_beta=9.0,
-             posterior_alpha=9.0, posterior_beta=23.0, k_prior=22, k_post=8),
+             posterior_alpha=9.0, posterior_beta=23.0, prior_mean=0.72, posterior_mean=0.28),
         Node(id="n2", exploration_id="e", hypothesis="Medium surprisal",
-             status="verified", bayesian_surprise=1.2, belief_shifted=True, depth=2),
+             status="verified", bayesian_surprise=1.2, depth=2),
         Node(id="n3", exploration_id="e", hypothesis="No surprisal",
-             status="verified", bayesian_surprise=0.0, belief_shifted=False, depth=1),
+             status="verified", bayesian_surprise=0.0, depth=1),
         Node(id="n4", exploration_id="e", hypothesis="Failed node",
              status="failed", bayesian_surprise=None, depth=1),
     ]
@@ -65,15 +65,15 @@ def test_export_training_data(tmp_db):
     assert len(lines) == 3  # 3 verified nodes
     first = json.loads(lines[0])
     assert "hypothesis" in first
-    assert "surprisal" in first
-    assert first["surprisal"] in (0, 1)
+    assert "bayesian_surprise" in first
+    assert first["bayesian_surprise"] >= 0
 
 
 def test_export_json_includes_cited_papers(tmp_db):
     papers = json.dumps([{"arxiv_id": "2602.07670", "title": "Test Paper", "gap": "gap"}])
     tmp_db.insert_node(Node(
         id="n_lit", exploration_id="e", hypothesis="Literature-grounded hypothesis",
-        status="verified", bayesian_surprise=5.0, belief_shifted=True,
+        status="verified", bayesian_surprise=5.0,
         depth=1, cited_papers=papers,
     ))
     result = export_json(tmp_db)
@@ -85,7 +85,7 @@ def test_export_markdown_includes_citations(tmp_db):
     papers = json.dumps([{"arxiv_id": "2602.07670", "title": "Test Paper", "gap": "untested"}])
     tmp_db.insert_node(Node(
         id="n_lit2", exploration_id="e", hypothesis="h",
-        status="verified", bayesian_surprise=3.0, belief_shifted=True,
+        status="verified", bayesian_surprise=3.0,
         depth=1, cited_papers=papers,
     ))
     md = export_markdown(tmp_db)

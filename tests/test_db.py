@@ -114,14 +114,14 @@ def test_insert_belief_sample(tmp_db):
         node_id=node.id,
         phase="prior",
         sample_index=0,
-        believes_hypothesis=True,
+        believes_hypothesis=1.0,
         raw_response="Yes, I believe this.",
     )
     tmp_db.insert_belief_sample(sample)
 
     samples = tmp_db.get_belief_samples(node.id, "prior")
     assert len(samples) == 1
-    assert samples[0].believes_hypothesis is True
+    assert samples[0].believes_hypothesis == 1.0
     assert samples[0].raw_response == "Yes, I believe this."
     assert samples[0].phase == "prior"
     assert samples[0].sample_index == 0
@@ -273,7 +273,7 @@ def test_count_nodes_and_surprisals_scoped_to_exploration(tmp_db):
         exploration_id="exp-a",
         parent_id=exp_a_root.id,
         status="verified",
-        belief_shifted=True,
+        bayesian_surprise=1.5,
     )
     exp_b_root = _make_node(exploration_id="exp-b", status="verified")
     for n in [exp_a_root, exp_a_child, exp_b_root]:
